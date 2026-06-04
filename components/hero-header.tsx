@@ -4,7 +4,7 @@ import { ThreeViewerClient } from "@/components/three-viewer-client"
 
 export function HeroHeader() {
   return (
-    <header className="relative w-full overflow-hidden min-h-[85vh] flex items-center justify-center bg-[#05070a] py-12 lg:py-20 border-b border-slate-900">
+    <header className="relative w-full overflow-hidden min-h-[85vh] flex items-center justify-center py-12 lg:py-20 border-b border-slate-900">
       {/* Cyber Grid Background */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(239,68,68,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(239,68,68,0.04)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
       

@@ -24,7 +24,7 @@ const features = [
 
 export function AboutTournament() {
   return (
-    <section className="px-4 py-20 bg-[#05070a] relative border-b border-slate-900">
+    <section className="px-4 py-20 relative border-b border-slate-900">
       <div className="mx-auto max-w-6xl relative z-10">
         {/* Section heading */}
         <div className="mb-16 text-center">

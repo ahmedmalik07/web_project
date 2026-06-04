@@ -67,7 +67,7 @@ function Butterfly() {
           child.material.metalness = 0.8
           // Add a subtle neon crimson glow if possible
           child.material.emissive = new THREE.Color('#ef4444')
-          child.material.emissiveIntensity = 0.25
+          child.material.emissiveIntensity = 0.85
         }
       }
     })
@@ -78,7 +78,7 @@ function Butterfly() {
       {/* Base orientation adjustment */}
       <primitive 
         object={scene} 
-        scale={0.015} // Scale down standard large models
+        scale={0.028} // Larger scale so it's visible as a background element
         rotation={[Math.PI / 2, Math.PI, 0]} // Face upwards/towards camera
       />
     </group>
@@ -96,17 +96,19 @@ export default function ButterflyViewer() {
         gl={{ antialias: true, alpha: true }}
       >
         {/* Soft environmental lighting */}
-        <ambientLight intensity={1.2} />
+        <ambientLight intensity={1.5} />
         
         {/* Directional light that cast shadows */}
         <directionalLight
           position={[0, 5, 5]}
-          intensity={2.0}
+          intensity={3.0}
+          color="#ffffff"
         />
         
         {/* Neon Cyberpunk ambient highlights */}
-        <pointLight position={[-5, 5, 2]} intensity={2.5} color="#ef4444" />
-        <pointLight position={[5, -5, 2]} intensity={2.5} color="#f97316" />
+        <pointLight position={[-5, 5, 2]} intensity={4.0} color="#ef4444" />
+        <pointLight position={[5, -5, 2]} intensity={4.0} color="#f97316" />
+        <spotLight position={[0, 10, 0]} intensity={2.0} color="#ef4444" angle={0.5} penumbra={1} />
         
         <Suspense fallback={null}>
           <Butterfly />
