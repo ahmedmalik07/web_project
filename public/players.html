@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gully XI Premier League - Players</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0a3a1a 0%, #0f5a2b 100%);
+      color: #f2f2f2;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding: 30px 20px;
+      background: rgba(0, 166, 81, 0.1);
+      border: 2px solid #00a651;
+      border-radius: 12px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      color: #00a651;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .subtitle {
+      color: #c9d400;
+      font-size: 1.1rem;
+      font-weight: 500;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    #playersContainer {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+
+    .playerCard {
+      background: rgba(22, 101, 52, 0.3);
+      border: 2px solid #00a651;
+      border-radius: 12px;
+      padding: 20px;
+      transition: all 0.3s ease;
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+
+    .playerCard:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 12px 32px rgba(0, 166, 81, 0.3);
+      border-color: #c9d400;
+    }
+
+    .playerImage {
+      width: 100%;
+      height: 200px;
+      background-size: cover;
+      background-position: center;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      border: 2px solid #00a651;
+    }
+
+    .playerCard h3 {
+      color: #c9d400;
+      font-size: 1.3rem;
+      margin-bottom: 12px;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .playerCard p {
+      color: #e0e0e0;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+    }
+
+    .playerCard strong {
+      color: #00a651;
+      font-weight: 600;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      border-top: 2px solid #00a651;
+      color: #a0a0a0;
+      font-size: 0.9rem;
+      margin-top: 40px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      font-size: 1.2rem;
+      color: #00a651;
+    }
+
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 1.8rem;
+      }
+
+      #playersContainer {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🏏 Gully XI Premier League</h1>
+      <p class="subtitle">Tapeball Cricket Champions of Pakistan's Mohallas</p>
+    </header>
+
+    <div class="loading">Loading players...</div>
+    <div id="playersContainer"></div>
+
+    <footer>
+      <p>&copy; 2026 Gully XI Premier League | Celebrating Pakistan's Street Cricket Culture</p>
+      <p>Data loaded dynamically using Fetch API from players.json</p>
+    </footer>
+  </div>
+
+  <script src="players.js"></script>
+</body>
+</html>

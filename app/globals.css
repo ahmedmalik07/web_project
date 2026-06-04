@@ -1,0 +1,274 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+:root {
+  --background: oklch(0.06 0.01 260); /* Deep void black-blue */
+  --foreground: oklch(0.98 0.005 260);
+  --card: oklch(0.09 0.015 260); /* Obsidian card */
+  --card-foreground: oklch(0.98 0.005 260);
+  --popover: oklch(0.09 0.015 260);
+  --popover-foreground: oklch(0.98 0.005 260);
+  --primary: oklch(0.6 0.24 18); /* High-impact Crimson Red (Adidas/Valorant) */
+  --primary-foreground: oklch(0.99 0.002 18);
+  --secondary: oklch(0.12 0.02 260);
+  --secondary-foreground: oklch(0.92 0.005 260);
+  --muted: oklch(0.1 0.01 260);
+  --muted-foreground: oklch(0.6 0.015 260);
+  --accent: oklch(0.62 0.23 28); /* Cyber Neon Orange/Red */
+  --accent-foreground: oklch(0.05 0.01 28);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.99 0.005 25);
+  --border: oklch(0.16 0.02 260);
+  --input: oklch(0.12 0.02 260);
+  --ring: oklch(0.6 0.24 18);
+  --chart-1: oklch(0.6 0.24 18);
+  --chart-2: oklch(0.62 0.23 28);
+  --chart-3: oklch(0.5 0.1 18);
+  --chart-4: oklch(0.75 0.12 28);
+  --chart-5: oklch(0.55 0.15 18);
+  --radius: 0.5rem; /* Sharp, aggressive angles matching Valorant */
+  --sidebar: oklch(0.08 0.01 260);
+  --sidebar-foreground: oklch(0.98 0.005 260);
+  --sidebar-primary: oklch(0.6 0.24 18);
+  --sidebar-primary-foreground: oklch(0.99 0.002 18);
+  --sidebar-accent: oklch(0.12 0.02 260);
+  --sidebar-accent-foreground: oklch(0.92 0.005 260);
+  --sidebar-border: oklch(0.16 0.02 260);
+  --sidebar-ring: oklch(0.6 0.24 18);
+}
+
+/* Dark mode (mirrored for consistent high-impact esports branding) */
+.dark {
+  --background: oklch(0.05 0.008 260);
+  --foreground: oklch(0.96 0.005 260);
+  --card: oklch(0.08 0.012 260);
+  --card-foreground: oklch(0.96 0.005 260);
+  --popover: oklch(0.08 0.012 260);
+  --popover-foreground: oklch(0.96 0.005 260);
+  --primary: oklch(0.62 0.23 18);
+  --primary-foreground: oklch(0.99 0.002 18);
+  --secondary: oklch(0.1 0.015 260);
+  --secondary-foreground: oklch(0.9 0.005 260);
+  --muted: oklch(0.08 0.008 260);
+  --muted-foreground: oklch(0.55 0.01 260);
+  --accent: oklch(0.65 0.22 28);
+  --accent-foreground: oklch(0.04 0.01 28);
+  --destructive: oklch(0.5 0.2 25);
+  --destructive-foreground: oklch(0.95 0.005 25);
+  --border: oklch(0.14 0.015 260);
+  --input: oklch(0.1 0.015 260);
+  --ring: oklch(0.62 0.23 18);
+}
+
+@theme inline {
+  --font-sans: var(--font-space-grotesk), 'Geist', 'Geist Fallback';
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-serif: 'Space Grotesk', serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Select option styling */
+select option {
+  background-color: oklch(0.16 0.015 155);
+  color: oklch(0.95 0.01 155);
+}
+
+.dark select option {
+  background-color: oklch(0.12 0.01 155);
+  color: oklch(0.92 0.01 155);
+}
+
+/* Custom 3D & Premium Cyberpunk/Glassmorphic Utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.carbon-bg {
+  background-color: #05070a;
+  background-image: 
+    linear-gradient(45deg, #090b11 25%, transparent 25%), 
+    linear-gradient(-45deg, #090b11 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #090b11 75%), 
+    linear-gradient(-45deg, transparent 75%, #090b11 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
+.cyber-panel-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.5s ease, border-color 0.3s ease;
+  background: rgba(13, 15, 20, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+}
+
+.cyber-panel-3d:hover {
+  transform: rotateX(4deg) rotateY(-4deg) translateZ(8px);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8), 0 0 20px rgba(239, 68, 68, 0.2);
+}
+
+.cyber-btn-3d {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cyber-btn-3d:hover {
+  transform: translateY(-2px) translateZ(3px);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4), 0 0 12px rgba(239, 68, 68, 0.2);
+}
+
+.cyber-btn-3d:active {
+  transform: translateY(1px) translateZ(0px);
+  box-shadow: 0 2px 5px rgba(239, 68, 68, 0.2);
+}
+
+.text-glow-primary {
+  text-shadow: 0 0 15px rgba(239, 68, 68, 0.7), 0 0 5px rgba(239, 68, 68, 0.4);
+}
+
+.glass-panel {
+  background: rgba(13, 15, 20, 0.8);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.neon-border-glow {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.15), inset 0 0 15px rgba(239, 68, 68, 0.05);
+}
+
+.neon-border-glow:hover {
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.3), inset 0 0 25px rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* Valorant-style esports styling cuts */
+.esports-clip {
+  clip-path: polygon(0 0, 100% 0, 96% 100%, 0% 100%);
+}
+
+.esports-bracket {
+  position: relative;
+}
+
+.esports-bracket::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 8px; height: 8px;
+  border-top: 2px solid #ef4444;
+  border-left: 2px solid #ef4444;
+}
+
+.esports-bracket::after {
+  content: '';
+  position: absolute;
+  bottom: 0; right: 0;
+  width: 8px; height: 8px;
+  border-bottom: 2px solid #ef4444;
+  border-right: 2px solid #ef4444;
+}
+
+/* Valorant-style diagonal cuts */
+.val-cut {
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+
+.val-cut-sm {
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.val-btn {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.05);
+  color: #fff;
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  font-family: var(--font-space-grotesk), sans-serif;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.val-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transition: all 0.5s ease;
+}
+
+.val-btn:hover::before {
+  left: 100%;
+}
+
+.val-btn:hover {
+  background: #ef4444;
+  color: #05070a;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+  border-color: #ef4444;
+  transform: translateY(-1px);
+}
+
+.val-btn:active {
+  transform: translateY(1px);
+}
+
+/* Carbon Fiber/Esports pattern overlay */
+.cyber-grid-red {
+  background-image: radial-gradient(rgba(239, 68, 68, 0.15) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+
+

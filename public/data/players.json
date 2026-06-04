@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Ahmed Khan",
+    "nickname": "Sixer",
+    "game": "Tapeball Cricket",
+    "rank": "Champion",
+    "score": 892,
+    "mohalla": "Saddar Strikers",
+    "batting_style": "Right-handed",
+    "image": "/images/players/player-1.jpg"
+  },
+  {
+    "name": "Usman Ali",
+    "nickname": "Yorker",
+    "game": "Tapeball Cricket",
+    "rank": "Elite",
+    "score": 845,
+    "mohalla": "Defence Dragons",
+    "batting_style": "Right-handed",
+    "image": "/images/players/player-2.jpg"
+  },
+  {
+    "name": "Bilal Hussain",
+    "nickname": "Pace",
+    "game": "Tapeball Cricket",
+    "rank": "Elite",
+    "score": 798,
+    "mohalla": "Gulberg Gladiators",
+    "batting_style": "Right-handed",
+    "image": "/images/players/player-3.jpg"
+  },
+  {
+    "name": "Faisal Iqbal",
+    "nickname": "Spin",
+    "game": "Tapeball Cricket",
+    "rank": "Ace",
+    "score": 756,
+    "mohalla": "Clifton Kings",
+    "batting_style": "Left-handed",
+    "image": "/images/players/player-4.jpg"
+  },
+  {
+    "name": "Hamza Raza",
+    "nickname": "Slog",
+    "game": "Tapeball Cricket",
+    "rank": "Ace",
+    "score": 712,
+    "mohalla": "Nazimabad Knights",
+    "batting_style": "Right-handed",
+    "image": "/images/players/player-5.jpg"
+  },
+  {
+    "name": "Saad Malik",
+    "nickname": "Tape",
+    "game": "Tapeball Cricket",
+    "rank": "Pro",
+    "score": 689,
+    "mohalla": "F-6 Falcons",
+    "batting_style": "Right-handed",
+    "image": "/images/players/player-6.jpg"
+  },
+  {
+    "name": "Omar Shah",
+    "nickname": "Reverse",
+    "game": "Tapeball Cricket",
+    "rank": "Pro",
+    "score": 654,
+    "mohalla": "Hayatabad Hawks",
+    "batting_style": "Left-handed",
+    "image": "/images/players/player-7.jpg"
+  },
+  {
+    "name": "Zain Aslam",
+    "nickname": "Dasher",
+    "game": "Tapeball Cricket",
+    "rank": "Pro",
+    "score": 621,
+    "mohalla": "Model Town Titans",
+    "batting_style": "Right-handed",
+    "image": "/images/players/player-8.jpg"
+  },
+  {
+    "name": "Kamran Yousuf",
+    "nickname": "Doosra",
+    "game": "Tapeball Cricket",
+    "rank": "Rising",
+    "score": 598,
+    "mohalla": "Walled City Warriors",
+    "batting_style": "Right-handed",
+    "image": "/images/players/player-9.jpg"
+  }
+]
