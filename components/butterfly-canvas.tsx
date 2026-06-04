@@ -17,8 +17,8 @@ function DebugSphere() {
   })
   return (
     <mesh ref={meshRef} position={[0, 0, 0]}>
-      <sphereGeometry args={[0.12, 32, 32]} />
-      <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={4} />
+      <sphereGeometry args={[0.15, 32, 32]} />
+      <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={5} />
     </mesh>
   )
 }
@@ -49,7 +49,7 @@ function ButterflyModel() {
           child.material.roughness = 0.2
           child.material.metalness = 0.7
           child.material.emissive = new THREE.Color('#ef4444')
-          child.material.emissiveIntensity = 1.2
+          child.material.emissiveIntensity = 1.5
         }
       }
     })
@@ -108,7 +108,7 @@ function ButterflyModel() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Scene content                                                     */
+/*  Scene                                                             */
 /* ------------------------------------------------------------------ */
 function Scene() {
   return (
@@ -127,29 +127,42 @@ function Scene() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Main viewer                                                       */
+/*  Fixed full-viewport Canvas                                        */
 /* ------------------------------------------------------------------ */
-export default function ButterflyViewer() {
+export default function ButterflyCanvas() {
   return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-      }}
-    >
+    <>
       <Canvas
         camera={{ position: [0, 0, 4], fov: 55, near: 0.1, far: 100 }}
         gl={{ antialias: true, alpha: true }}
         dpr={[1, 2]}
-        style={{ width: '100%', height: '100%', display: 'block' }}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 1,
+          pointerEvents: 'none',
+        }}
       >
         <Scene />
       </Canvas>
-    </div>
+      {/* Dark vignette overlay on top of the Canvas but below content */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 2,
+          pointerEvents: 'none',
+          background: 'radial-gradient(ellipse at center, rgba(5,7,10,0.45) 0%, rgba(5,7,10,0.78) 100%)',
+        }}
+      />
+    </>
   )
 }
 
-useGLTF.preload('/fantasy_butterfly_animation.glb')
+// Model will be loaded by useGLTF inside ButterflyModel
