@@ -116,15 +116,17 @@ export default function ButterflyCanvas() {
 
   return (
     <>
-      <Canvas
-        camera={{ position: [0, 0, 8], fov: 45 }}
-        dpr={[1, 1.5]}
-        gl={{ antialias: false, alpha: true }}
-        className="fixed inset-0"
-        style={{ zIndex: 1, pointerEvents: 'none' }}
-      >
-        <Scene mousePosition={mousePosition} />
-      </Canvas>
+      {/* 3D Canvas layer – explicit fixed wrapper so it fills viewport */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 1 }}>
+        <Canvas
+          camera={{ position: [0, 0, 8], fov: 45 }}
+          dpr={[1, 1.5]}
+          gl={{ antialias: false, alpha: true }}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+        >
+          <Scene mousePosition={mousePosition} />
+        </Canvas>
+      </div>
       {/* Dark overlay for text readability */}
       <div
         className="fixed inset-0 pointer-events-none"
