@@ -1,6 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const Registration = require('./models/Registration');
+const Payment = require('./models/Payment');
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -61,6 +62,34 @@ async function deleteRegistration(id) {
   return { success: true };
 }
 
+async function getPayments() {
+  return await Payment.find().sort({ paymentDate: -1 });
+}
+
+async function getPaymentById(id) {
+  return await Payment.findById(id);
+}
+
+async function createPayment(pay) {
+  const newPay = new Payment({
+    registrationId: pay.registrationId,
+    amount: pay.amount,
+    currency: pay.currency,
+    method: pay.method,
+    status: pay.status,
+    txHash: pay.txHash,
+    paymentDate: pay.paymentDate || new Date().toLocaleString()
+  });
+  await newPay.save();
+  // Return structure matching SQLite for ID
+  return { id: newPay._id.toString(), ...pay };
+}
+
+async function deletePayment(id) {
+  await Payment.findByIdAndDelete(id);
+  return { success: true };
+}
+
 module.exports = {
   connectMongo,
   disconnectMongo,
@@ -68,5 +97,9 @@ module.exports = {
   getRegistrationById,
   createRegistration,
   updateRegistration,
-  deleteRegistration
+  deleteRegistration,
+  getPayments,
+  getPaymentById,
+  createPayment,
+  deletePayment
 };

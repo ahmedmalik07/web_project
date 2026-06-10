@@ -79,10 +79,18 @@ export function TournamentRegistration() {
   
   const [paymentStep, setPaymentStep] = useState<'details' | 'simulating' | 'success'>('details')
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentErrors, setPaymentErrors] = useState<string | null>(null)
 
   // Admin Editing State
   const [editingPlayer, setEditingPlayer] = useState<RegisteredPlayer | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [adminSubTab, setAdminSubTab] = useState<'roster' | 'payments'>('roster')
+
+  // Payments log state
+  const [payments, setPayments] = useState<any[]>([])
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [paymentsError, setPaymentsError] = useState<string | null>(null)
+  const [lastPaymentInfo, setLastPaymentInfo] = useState<any>(null)
 
   // API base URL
   const getApiUrl = () => {
@@ -124,6 +132,44 @@ export function TournamentRegistration() {
     setPaymentDetails((prev) => ({ ...prev, [name]: value }))
   }
 
+  // Fetch payments list
+  const fetchPayments = async () => {
+    setPaymentsLoading(true)
+    try {
+      const response = await fetch(`${getApiUrl()}/payments`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch payments from backend.')
+      }
+      const data = await response.json()
+      setPayments(data)
+      setPaymentsError(null)
+    } catch (err: any) {
+      console.error('Error fetching payments:', err)
+      setPaymentsError('Could not load payment records.')
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }
+
+  // Delete payment record
+  const handleDeletePayment = async (id: string) => {
+    if (!confirm('Are you sure you want to remove this payment record from the database?')) {
+      return
+    }
+    try {
+      const res = await fetch(`${getApiUrl()}/payments/${id}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) {
+        throw new Error('Failed to delete payment.')
+      }
+      setPayments((prev) => prev.filter((p) => p.id !== id))
+    } catch (err) {
+      console.error(err)
+      alert('Failed to delete payment from database.')
+    }
+  }
+
   // Open Payment dialog
   const handleOpenPayment = (e: React.FormEvent) => {
     e.preventDefault()
@@ -131,66 +177,108 @@ export function TournamentRegistration() {
       alert('Please fill out all required fields.')
       return
     }
+    setPaymentErrors(null)
     setPaymentStep('details')
     setShowPaymentModal(true)
   }
 
   // Submit registration with mock payment info
   const handleConfirmRegistration = async () => {
+    // Local validations
+    if (formData.paymentMethod === 'JazzCash' || formData.paymentMethod === 'EasyPaisa') {
+      const { mobileNumber } = paymentDetails
+      if (!mobileNumber || !/^(03|923|\+923)\d{9}$/.test(mobileNumber.replace(/\s+/g, ''))) {
+        setPaymentErrors('Invalid Pakistani mobile number format (must be 11 digits starting with 03)')
+        return
+      }
+    } else if (formData.paymentMethod === 'Stripe' || formData.paymentMethod === 'PayPal') {
+      const { cardNumber, expiry, cvc } = paymentDetails
+      const cleanCard = (cardNumber || '').replace(/\s+/g, '')
+      if (!cleanCard || cleanCard.length < 15 || cleanCard.length > 16 || isNaN(Number(cleanCard))) {
+        setPaymentErrors('Invalid credit card number format (must be 15 or 16 digits)')
+        return
+      }
+      if (!expiry || !/^\d{2}\/\d{2}$/.test(expiry)) {
+        setPaymentErrors('Invalid expiry date (must be in MM/YY format)')
+        return
+      }
+      if (!cvc || cvc.length < 3 || cvc.length > 4 || isNaN(Number(cvc))) {
+        setPaymentErrors('Invalid CVC (must be 3 or 4 digits)')
+        return
+      }
+    } else if (formData.paymentMethod === 'USDT' || formData.paymentMethod === 'BTC' || formData.paymentMethod === 'ETH') {
+      const { txHash } = paymentDetails
+      if (!txHash || txHash.trim().length < 10) {
+        setPaymentErrors('Invalid cryptocurrency transaction hash (must be at least 10 characters)')
+        return
+      }
+    }
+
+    setPaymentErrors(null)
     setPaymentStep('simulating')
     
-    // Simulate API request delay
-    setTimeout(async () => {
-      try {
-        const payload = {
+    // Call real Payment checkout API in backend
+    try {
+      const payload = {
+        player: {
           name: formData.name.trim(),
           nickname: formData.nickname.trim(),
           mohalla: formData.mohalla,
           contactNumber: formData.contactNumber.trim(),
           battingStyle: formData.battingStyle,
-          paymentMethod: formData.paymentMethod,
-          paymentStatus: 'Paid' // Simulated payment gets approved
+        },
+        payment: {
+          method: formData.paymentMethod,
+          amount: 500, // PKR 500
+          currency: 'PKR',
+          mobileNumber: paymentDetails.mobileNumber,
+          cardNumber: paymentDetails.cardNumber,
+          expiry: paymentDetails.expiry,
+          cvc: paymentDetails.cvc,
+          txHash: paymentDetails.txHash
         }
-
-        const res = await fetch(`${getApiUrl()}/registrations`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        })
-
-        if (!res.ok) {
-          throw new Error('Database insertion failed.')
-        }
-
-        const newPlayer = await res.json()
-        setPlayers((prev) => [newPlayer, ...prev])
-        setPaymentStep('success')
-        
-        // Reset form
-        setFormData({
-          name: '',
-          mohalla: 'Saddar Strikers',
-          nickname: '',
-          contactNumber: '',
-          battingStyle: 'Right-handed',
-          paymentMethod: 'JazzCash',
-        })
-        setPaymentDetails({
-          mobileNumber: '',
-          cardNumber: '',
-          expiry: '',
-          cvc: '',
-          cryptoAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
-          txHash: ''
-        })
-      } catch (err) {
-        console.error(err)
-        alert('Failed to save registration in database.')
-        setShowPaymentModal(false)
       }
-    }, 1500)
+
+      const res = await fetch(`${getApiUrl()}/payments/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const responseData = await res.json()
+
+      if (!res.ok) {
+        throw new Error(responseData.error || 'Payment processing failed.')
+      }
+
+      setPlayers((prev) => [responseData.registration, ...prev])
+      setLastPaymentInfo(responseData.payment)
+      setPaymentStep('success')
+      
+      // Reset form
+      setFormData({
+        name: '',
+        mohalla: 'Saddar Strikers',
+        nickname: '',
+        contactNumber: '',
+        battingStyle: 'Right-handed',
+        paymentMethod: 'JazzCash',
+      })
+      setPaymentDetails({
+        mobileNumber: '',
+        cardNumber: '',
+        expiry: '',
+        cvc: '',
+        cryptoAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
+        txHash: ''
+      })
+    } catch (err: any) {
+      console.error(err)
+      setPaymentErrors(err.message || 'Failed to complete transaction database entry.')
+      setPaymentStep('details')
+    }
   }
 
   // Delete registration (CRUD - Delete)
@@ -248,6 +336,15 @@ export function TournamentRegistration() {
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.nickname.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.mohalla.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  // Filter payments by search
+  const filteredPayments = payments.filter(
+    (p) =>
+      p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.method.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.txHash && p.txHash.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      p.registrationId.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   return (
@@ -557,10 +654,41 @@ export function TournamentRegistration() {
               <div className="bg-slate-950 p-3 val-cut-sm border border-slate-900 text-[10px] text-slate-400 max-w-md font-mono">
                 <div className="flex items-center gap-1.5 text-primary font-bold mb-1">
                   <Database className="h-3.5 w-3.5" />
-                  <span>SQLite Schema: registrations</span>
+                  <span>SQLite Database Schema</span>
                 </div>
-                <code>id(TEXT PK), name(TEXT), nickname(TEXT), mohalla(TEXT), contactNumber(TEXT), battingStyle(TEXT), paymentMethod(TEXT), paymentStatus(TEXT), registeredAt(TEXT)</code>
+                {adminSubTab === 'roster' ? (
+                  <code>Schema registrations: id(TEXT PK), name(TEXT), nickname(TEXT), mohalla(TEXT), contactNumber(TEXT), battingStyle(TEXT), paymentMethod(TEXT), paymentStatus(TEXT), registeredAt(TEXT)</code>
+                ) : (
+                  <code>Schema payments: id(TEXT PK), registrationId(TEXT), amount(INTEGER), currency(TEXT), method(TEXT), status(TEXT), txHash(TEXT), paymentDate(TEXT)</code>
+                )}
               </div>
+            </div>
+
+            {/* Admin Sub-Tabs */}
+            <div className="flex gap-6 mb-6 border-b border-slate-900 pb-2">
+              <button
+                onClick={() => setAdminSubTab('roster')}
+                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 ${
+                  adminSubTab === 'roster'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                Roster List ({players.length})
+              </button>
+              <button
+                onClick={() => {
+                  setAdminSubTab('payments');
+                  fetchPayments();
+                }}
+                className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 ${
+                  adminSubTab === 'payments'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                Payments Log ({payments.length})
+              </button>
             </div>
 
             {/* Admin Controls */}
@@ -570,7 +698,7 @@ export function TournamentRegistration() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                 <input
                   type="text"
-                  placeholder="Search player, nickname..."
+                  placeholder={adminSubTab === 'roster' ? "Search player, nickname..." : "Search ID, method, hash..."}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-800 bg-slate-950/80 text-sm text-white placeholder:text-slate-600 focus:border-primary focus:outline-none"
@@ -579,7 +707,7 @@ export function TournamentRegistration() {
 
               <div className="flex items-center gap-2.5">
                 <button
-                  onClick={fetchRegistrations}
+                  onClick={adminSubTab === 'roster' ? fetchRegistrations : fetchPayments}
                   className="flex items-center gap-1.5 px-4 py-2.5 val-cut-sm border border-slate-800 hover:border-primary/45 text-slate-300 hover:text-white transition-all text-xs font-bold uppercase"
                 >
                   <RefreshCw className="h-3.5 w-3.5" /> Reload Database
@@ -587,90 +715,166 @@ export function TournamentRegistration() {
               </div>
             </div>
 
-            {/* Admin Table */}
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-                <RefreshCw className="h-8 w-8 animate-spin text-primary mb-3" />
-                <p className="text-sm font-bold">Retrieving secure records...</p>
-              </div>
-            ) : filteredPlayers.length === 0 ? (
-              <div className="text-center py-20 text-slate-500 bg-slate-950/30 border border-slate-900 rounded-xl">
-                <p className="text-sm font-bold">No records found matching search criteria.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto val-cut-sm border border-slate-900 bg-slate-950/40">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-950 border-b border-slate-900 text-slate-400 font-bold uppercase tracking-wider">
-                      <th className="px-5 py-4">Player</th>
-                      <th className="px-5 py-4">Nickname</th>
-                      <th className="px-5 py-4">Mohalla / Team</th>
-                      <th className="px-5 py-4">Contact</th>
-                      <th className="px-5 py-4">Style</th>
-                      <th className="px-5 py-4">Payment Info</th>
-                      <th className="px-5 py-4 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPlayers.map((player) => (
-                      <tr
-                        key={player.id}
-                        className="border-b border-slate-900 hover:bg-slate-900/30 transition-colors"
-                      >
-                        <td className="px-5 py-4 font-black text-white">
-                          {player.name}
-                        </td>
-                        <td className="px-5 py-4 text-primary font-black">
-                          "{player.nickname}"
-                        </td>
-                        <td className="px-5 py-4 text-slate-300 font-semibold">
-                          {player.mohalla}
-                        </td>
-                        <td className="px-5 py-4 text-slate-400 font-mono">
-                          {player.contactNumber}
-                        </td>
-                        <td className="px-5 py-4 text-slate-400 font-semibold">
-                          {player.battingStyle}
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-bold text-white text-[10px] bg-slate-950 px-1.5 py-0.5 rounded border border-slate-850 inline-block w-fit">
-                              {player.paymentMethod}
-                            </span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border w-fit ${
-                              player.paymentStatus === 'Paid'
-                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                                : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                            }`}>
-                              {player.paymentStatus}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center justify-center gap-2">
-                            {/* Update Button */}
-                            <button
-                              onClick={() => startEdit(player)}
-                              className="p-2 val-cut-sm bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-slate-950 transition-all"
-                              title="Edit Registration"
-                            >
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </button>
-                            {/* Delete Button */}
-                            <button
-                              onClick={() => handleDeleteRegistration(player.id)}
-                              className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition-all"
-                              title="Delete Registration"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            {/* Sub-Tab 1: Roster List */}
+            {adminSubTab === 'roster' && (
+              <>
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                    <RefreshCw className="h-8 w-8 animate-spin text-primary mb-3" />
+                    <p className="text-sm font-bold">Retrieving secure records...</p>
+                  </div>
+                ) : filteredPlayers.length === 0 ? (
+                  <div className="text-center py-20 text-slate-500 bg-slate-950/30 border border-slate-900 rounded-xl">
+                    <p className="text-sm font-bold">No records found matching search criteria.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto val-cut-sm border border-slate-900 bg-slate-950/40">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-950 border-b border-slate-900 text-slate-400 font-bold uppercase tracking-wider">
+                          <th className="px-5 py-4">Player</th>
+                          <th className="px-5 py-4">Nickname</th>
+                          <th className="px-5 py-4">Mohalla / Team</th>
+                          <th className="px-5 py-4">Contact</th>
+                          <th className="px-5 py-4">Style</th>
+                          <th className="px-5 py-4">Payment Info</th>
+                          <th className="px-5 py-4 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPlayers.map((player) => (
+                          <tr
+                            key={player.id}
+                            className="border-b border-slate-900 hover:bg-slate-900/30 transition-colors"
+                          >
+                            <td className="px-5 py-4 font-black text-white">
+                              {player.name}
+                            </td>
+                            <td className="px-5 py-4 text-primary font-black">
+                              "{player.nickname}"
+                            </td>
+                            <td className="px-5 py-4 text-slate-300 font-semibold">
+                              {player.mohalla}
+                            </td>
+                            <td className="px-5 py-4 text-slate-400 font-mono">
+                              {player.contactNumber}
+                            </td>
+                            <td className="px-5 py-4 text-slate-400 font-semibold">
+                              {player.battingStyle}
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-bold text-white text-[10px] bg-slate-950 px-1.5 py-0.5 rounded border border-slate-850 inline-block w-fit">
+                                  {player.paymentMethod}
+                                </span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border w-fit ${
+                                  player.paymentStatus === 'Paid'
+                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                    : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                                }`}>
+                                  {player.paymentStatus}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => startEdit(player)}
+                                  className="p-2 val-cut-sm bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-slate-950 transition-all"
+                                  title="Edit Registration"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteRegistration(player.id)}
+                                  className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition-all"
+                                  title="Delete Registration"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Sub-Tab 2: Payments Log */}
+            {adminSubTab === 'payments' && (
+              <>
+                {paymentsLoading ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                    <RefreshCw className="h-8 w-8 animate-spin text-primary mb-3" />
+                    <p className="text-sm font-bold">Retrieving transaction history...</p>
+                  </div>
+                ) : paymentsError ? (
+                  <div className="text-center py-20 text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl">
+                    <p className="text-sm font-bold">{paymentsError}</p>
+                  </div>
+                ) : filteredPayments.length === 0 ? (
+                  <div className="text-center py-20 text-slate-500 bg-slate-950/30 border border-slate-900 rounded-xl">
+                    <p className="text-sm font-bold">No payment logs found matching search criteria.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto val-cut-sm border border-slate-900 bg-slate-950/40">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-950 border-b border-slate-900 text-slate-400 font-bold uppercase tracking-wider">
+                          <th className="px-5 py-4">Receipt ID</th>
+                          <th className="px-5 py-4">Reg ID</th>
+                          <th className="px-5 py-4">Amount</th>
+                          <th className="px-5 py-4">Gateway</th>
+                          <th className="px-5 py-4">Ref/Hash Key</th>
+                          <th className="px-5 py-4">Date</th>
+                          <th className="px-5 py-4 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPayments.map((p) => (
+                          <tr
+                            key={p.id}
+                            className="border-b border-slate-900 hover:bg-slate-900/30 transition-colors"
+                          >
+                            <td className="px-5 py-4 font-black text-white font-mono">
+                              {p.id}
+                            </td>
+                            <td className="px-5 py-4 text-slate-300 font-mono">
+                              {p.registrationId}
+                            </td>
+                            <td className="px-5 py-4 font-bold text-emerald-400 font-mono">
+                              {p.amount} {p.currency}
+                            </td>
+                            <td className="px-5 py-4 text-slate-300 font-extrabold uppercase">
+                              {p.method}
+                            </td>
+                            <td className="px-5 py-4 text-slate-400 font-mono truncate max-w-[120px]" title={p.txHash}>
+                              {p.txHash}
+                            </td>
+                            <td className="px-5 py-4 text-slate-400">
+                              {p.paymentDate}
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => handleDeletePayment(p.id)}
+                                  className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition-all"
+                                  title="Delete Payment Record"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -834,6 +1038,12 @@ export function TournamentRegistration() {
                     Simulate secure checkout for tournament registration.
                   </p>
 
+                  {paymentErrors && (
+                    <div className="mb-4 rounded border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-400 font-bold">
+                      {paymentErrors}
+                    </div>
+                  )}
+
                   <div className="bg-slate-950 p-4 val-cut-sm border border-slate-900 mb-6 flex justify-between items-center">
                     <div>
                       <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest">Tournament Entry Fee</p>
@@ -993,9 +1203,20 @@ export function TournamentRegistration() {
                     <CheckCircle className="h-8 w-8 text-emerald-400" />
                   </div>
                   <h4 className="text-xl font-black text-white mb-2 uppercase">Registration Complete!</h4>
-                  <p className="text-xs text-slate-400 max-w-xs mb-6 font-bold">
+                  <p className="text-xs text-slate-400 max-w-xs mb-4 font-bold">
                     Simulated payment of <strong className="text-white">{REGISTRATION_FEE}</strong> was approved. Your details are saved in the database.
                   </p>
+
+                  {lastPaymentInfo && (
+                    <div className="bg-slate-950/80 p-3 val-cut-sm border border-slate-900 text-left w-full mb-6 font-mono text-[10px] text-slate-400 space-y-1.5">
+                      <div className="text-[9px] uppercase font-black text-primary mb-1">Payment Receipt (API Response)</div>
+                      <div><span className="text-slate-500">Transaction ID:</span> <span className="text-white font-bold">{lastPaymentInfo.id}</span></div>
+                      <div><span className="text-slate-500">Gateway Ref:</span> <span className="text-slate-300 select-all">{lastPaymentInfo.txHash}</span></div>
+                      <div><span className="text-slate-500">Amount Paid:</span> <span className="text-emerald-400 font-bold">{lastPaymentInfo.amount} {lastPaymentInfo.currency}</span></div>
+                      <div><span className="text-slate-500">Timestamp:</span> <span className="text-slate-300">{lastPaymentInfo.paymentDate}</span></div>
+                    </div>
+                  )}
+
                   <button
                     onClick={() => {
                       setShowPaymentModal(false)
