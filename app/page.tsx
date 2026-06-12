@@ -9,17 +9,17 @@ export default function Home() {
       <AboutTournament />
 
       {/* CTA to leaderboard */}
-      <section className="px-4 pb-20 text-center perspective-1000 relative z-10">
-        <div className="mx-auto max-w-md val-cut border border-rose-500/20 bg-slate-950/70 p-8 esports-bracket shadow-2xl">
-          <h3 className="mb-2 text-xl font-black text-white uppercase tracking-wider">
+      <section className="px-4 pb-20 text-center relative z-10">
+        <div className="mx-auto max-w-md rounded-2xl border border-border bg-card p-10 shadow-sm">
+          <h3 className="mb-2 text-xl font-bold text-foreground">
             Ready to compete?
           </h3>
-          <p className="mb-6 text-sm text-slate-450 font-bold uppercase tracking-wide">
-            {"Head to the live leaderboard to register your player and track rankings in real time."}
+          <p className="mb-6 text-sm text-muted-foreground leading-relaxed">
+            Head to the live leaderboard to register your player and track rankings in real time.
           </p>
           <Link
             href="/leaderboard"
-            className="val-btn val-cut-sm inline-block px-8 py-3.5 text-xs font-black"
+            className="val-btn inline-flex items-center gap-2 px-8 py-3 text-sm"
           >
             Open Leaderboard
           </Link>

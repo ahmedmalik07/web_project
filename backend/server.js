@@ -241,10 +241,112 @@ app.get('/payments', async (req, res) => {
   }
 });
 
+app.post('/payments', async (req, res) => {
+  try {
+    const { registrationId, amount, currency, method, status, txHash, paymentDate } = req.body;
+    if (!registrationId || !amount || !currency || !method || !status) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const newPay = {
+      id: 'PAY-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
+      registrationId,
+      amount: parseInt(amount),
+      currency,
+      method,
+      status,
+      txHash: txHash || 'TXN-' + Math.random().toString(36).substring(2, 12).toUpperCase(),
+      paymentDate: paymentDate || new Date().toLocaleString()
+    };
+    const created = await db().createPayment(newPay);
+    res.status(201).json(created);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/payments/:id', async (req, res) => {
+  try {
+    const { registrationId, amount, currency, method, status, txHash, paymentDate } = req.body;
+    if (!registrationId || !amount || !currency || !method || !status) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const updated = await db().updatePayment(req.params.id, {
+      registrationId,
+      amount: parseInt(amount),
+      currency,
+      method,
+      status,
+      txHash,
+      paymentDate: paymentDate || new Date().toLocaleString()
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/payments/:id', async (req, res) => {
   try {
     await db().deletePayment(req.params.id);
     res.json({ success: true, message: 'Payment record deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/seed', async (req, res) => {
+  try {
+    console.log('🌱 Manual seed requested. Clearing and seeding database...');
+    // Clear registrations
+    try {
+      const regs = await db().getRegistrations();
+      for (const r of regs) {
+        await db().deleteRegistration(r.id);
+      }
+    } catch (e) {
+      console.warn('Error clearing registrations during seed:', e.message);
+    }
+    // Clear payments
+    try {
+      const pays = await db().getPayments();
+      for (const p of pays) {
+        await db().deletePayment(p.id);
+      }
+    } catch (e) {
+      console.warn('Error clearing payments during seed:', e.message);
+    }
+    // Seed registrations
+    for (const reg of seedRegistrations) {
+      await db().createRegistration(reg);
+    }
+    // Seed payments
+    for (const pay of seedPayments) {
+      await db().createPayment(pay);
+    }
+    res.json({ success: true, message: 'Database reset and seeded with synthetic data successfully!' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/clear-db', async (req, res) => {
+  try {
+    console.log('🧹 Manual clear database requested...');
+    // Clear registrations
+    try {
+      const regs = await db().getRegistrations();
+      for (const r of regs) {
+        await db().deleteRegistration(r.id);
+      }
+    } catch (e) {}
+    // Clear payments
+    try {
+      const pays = await db().getPayments();
+      for (const p of pays) {
+        await db().deletePayment(p.id);
+      }
+    } catch (e) {}
+    res.json({ success: true, message: 'All registrations and payment records cleared successfully!' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -263,6 +365,127 @@ app.get('/health', (req, res) => {
 // ── Start Server ───────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
+
+const seedRegistrations = [
+  {
+    id: 'REG-1001',
+    name: 'Babar Azam',
+    nickname: 'Bobby',
+    mohalla: 'Model Town Titans',
+    contactNumber: '03001234567',
+    battingStyle: 'Right-handed',
+    paymentMethod: 'JazzCash',
+    paymentStatus: 'Paid',
+    registeredAt: new Date(Date.now() - 3600000 * 24).toLocaleString()
+  },
+  {
+    id: 'REG-1002',
+    name: 'Shaheen Afridi',
+    nickname: 'Eagle',
+    mohalla: 'Defence Dragons',
+    contactNumber: '03123456789',
+    battingStyle: 'Left-handed',
+    paymentMethod: 'EasyPaisa',
+    paymentStatus: 'Paid',
+    registeredAt: new Date(Date.now() - 3600000 * 18).toLocaleString()
+  },
+  {
+    id: 'REG-1003',
+    name: 'Mohammad Rizwan',
+    nickname: 'Superman',
+    mohalla: 'Gulberg Gladiators',
+    contactNumber: '03219876543',
+    battingStyle: 'Right-handed',
+    paymentMethod: 'Stripe',
+    paymentStatus: 'Paid',
+    registeredAt: new Date(Date.now() - 3600000 * 12).toLocaleString()
+  },
+  {
+    id: 'REG-1004',
+    name: 'Fakhar Zaman',
+    nickname: 'Fauji',
+    mohalla: 'Walled City Warriors',
+    contactNumber: '03335554433',
+    battingStyle: 'Left-handed',
+    paymentMethod: 'USDT',
+    paymentStatus: 'Paid',
+    registeredAt: new Date(Date.now() - 3600000 * 6).toLocaleString()
+  },
+  {
+    id: 'REG-1005',
+    name: 'Naseem Shah',
+    nickname: 'Junior',
+    mohalla: 'Nazimabad Knights',
+    contactNumber: '03456789012',
+    battingStyle: 'Right-handed',
+    paymentMethod: 'PayPal',
+    paymentStatus: 'Pending',
+    registeredAt: new Date(Date.now() - 3600000 * 2).toLocaleString()
+  }
+];
+
+const seedPayments = [
+  {
+    id: 'PAY-1001',
+    registrationId: 'REG-1001',
+    amount: 500,
+    currency: 'PKR',
+    method: 'JazzCash',
+    status: 'Paid',
+    txHash: 'TXN-JAZZCASH1001',
+    paymentDate: new Date(Date.now() - 3600000 * 24).toLocaleString()
+  },
+  {
+    id: 'PAY-1002',
+    registrationId: 'REG-1002',
+    amount: 500,
+    currency: 'PKR',
+    method: 'EasyPaisa',
+    status: 'Paid',
+    txHash: 'TXN-EASYPAISA1002',
+    paymentDate: new Date(Date.now() - 3600000 * 18).toLocaleString()
+  },
+  {
+    id: 'PAY-1003',
+    registrationId: 'REG-1003',
+    amount: 500,
+    currency: 'PKR',
+    method: 'Stripe',
+    status: 'Paid',
+    txHash: 'ch_stripe_1003_ok',
+    paymentDate: new Date(Date.now() - 3600000 * 12).toLocaleString()
+  },
+  {
+    id: 'PAY-1004',
+    registrationId: 'REG-1004',
+    amount: 500,
+    currency: 'PKR',
+    method: 'USDT',
+    status: 'Paid',
+    txHash: '0xusdt_transaction_hash_1004',
+    paymentDate: new Date(Date.now() - 3600000 * 6).toLocaleString()
+  }
+];
+
+async function seedDatabase() {
+  try {
+    const list = await db().getRegistrations();
+    if (list.length === 0) {
+      console.log('🌱 Database is empty. Seeding synthetic data...');
+      for (const reg of seedRegistrations) {
+        await db().createRegistration(reg);
+      }
+      for (const pay of seedPayments) {
+        await db().createPayment(pay);
+      }
+      console.log('✅ Synthetic data successfully seeded.');
+    } else {
+      console.log('📊 Database already contains data. Skipping seed.');
+    }
+  } catch (err) {
+    console.error('❌ Failed to seed database:', err.message);
+  }
+}
 
 async function startServer() {
   // Try MongoDB first
@@ -286,6 +509,9 @@ async function startServer() {
       console.error('❌ SQLite initialization failed:', err.message);
     }
   }
+
+  // Seed data if database is empty
+  await seedDatabase();
 
   app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);

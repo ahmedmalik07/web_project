@@ -34,12 +34,21 @@ export default function ContactPage() {
   function validate(): boolean {
     const newErrors: Partial<Record<keyof FormData, string>> = {}
     if (!formData.name.trim()) newErrors.name = "Full name is required"
+    else if (formData.name.trim().length < 2) newErrors.name = "Name must be at least 2 characters"
+
     if (!formData.email.trim()) {
       newErrors.email = "Email is required"
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = "Enter a valid email address"
     }
+
+    if (formData.phone.trim() && !/^(\+92|0)[0-9]{9,11}$/.test(formData.phone.replace(/[\s\-]/g, ''))) {
+      newErrors.phone = "Enter a valid Pakistani number (e.g. 0300 1234567)"
+    }
+
     if (!formData.message.trim()) newErrors.message = "Message is required"
+    else if (formData.message.trim().length < 10) newErrors.message = "Message must be at least 10 characters"
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -173,6 +182,7 @@ export default function ContactPage() {
                 placeholder="+92 3XX XXXXXXX"
                 className="w-full rounded-lg border border-border bg-input px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
+              {errors.phone && <p className="mt-1 text-xs text-destructive">{errors.phone}</p>}
             </div>
 
             {/* Message */}
@@ -226,19 +236,19 @@ export default function ContactPage() {
               <Mail className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <div>
                 <p className="text-sm font-medium text-foreground">Email</p>
-                <p className="text-xs text-slate-400">info@gullyxi.pk</p>
+                <p className="text-xs text-muted-foreground">info@gullyxi.pk</p>
               </div>
             </div>
 
             {/* Native 3D GLB Model Showcase */}
-            <div className="w-full aspect-square rounded-2xl border border-slate-800 bg-slate-950 p-2 relative overflow-hidden neon-border-glow">
+            <div className="w-full aspect-square rounded-2xl border border-border bg-card p-2 relative overflow-hidden neon-border-glow">
               <ThreeViewerClient type="glb" glbUrl="/avocado.glb" />
-              <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-slate-900 text-[8px] font-black text-slate-400 rounded border border-slate-800 z-20">
+              <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-secondary text-[8px] font-black text-muted-foreground rounded border border-border z-20">
                 INTERACTIVE GLB LOADED
               </div>
             </div>
 
-            <div className="mt-auto rounded-lg bg-slate-950/60 p-4 border border-slate-850">
+            <div className="mt-auto rounded-lg bg-secondary/60 p-4 border border-border">
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {"Office hours: Mon-Fri, 10 AM - 6 PM (PKT). Closed on national holidays and match days!"}
               </p>

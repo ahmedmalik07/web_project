@@ -42,3 +42,4 @@ backend/data/
 *.sqlite
 *.db
 *.sqlite3
+.vercel

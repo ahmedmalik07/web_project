@@ -90,6 +90,22 @@ async function deletePayment(id) {
   return { success: true };
 }
 
+async function updatePayment(id, pay) {
+  return await Payment.findByIdAndUpdate(
+    id,
+    {
+      registrationId: pay.registrationId,
+      amount: pay.amount,
+      currency: pay.currency,
+      method: pay.method,
+      status: pay.status,
+      txHash: pay.txHash,
+      paymentDate: pay.paymentDate
+    },
+    { new: true }
+  );
+}
+
 module.exports = {
   connectMongo,
   disconnectMongo,
@@ -101,5 +117,6 @@ module.exports = {
   getPayments,
   getPaymentById,
   createPayment,
+  updatePayment,
   deletePayment
 };

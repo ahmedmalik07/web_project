@@ -180,6 +180,30 @@ function deletePayment(id) {
   });
 }
 
+function updatePayment(id, payment) {
+  return new Promise((resolve, reject) => {
+    const query = `
+      UPDATE payments
+      SET registrationId = ?, amount = ?, currency = ?, method = ?, status = ?, txHash = ?, paymentDate = ?
+      WHERE id = ?
+    `;
+    const params = [
+      payment.registrationId,
+      payment.amount,
+      payment.currency,
+      payment.method,
+      payment.status,
+      payment.txHash,
+      payment.paymentDate,
+      id
+    ];
+    db.run(query, params, function(err) {
+      if (err) reject(err);
+      else resolve({ id, ...payment });
+    });
+  });
+}
+
 module.exports = {
   initDb,
   getRegistrations,
@@ -190,5 +214,6 @@ module.exports = {
   getPayments,
   getPaymentById,
   createPayment,
+  updatePayment,
   deletePayment
 };

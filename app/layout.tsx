@@ -5,7 +5,9 @@ import { Navbar } from '@/components/navbar'
 import { Footer } from '@/components/footer'
 import { Chatbot } from '@/components/chatbot'
 import { ThemeInitializer } from '@/components/theme-initializer'
+import { ThemeProvider } from '@/components/theme-provider'
 import { ButterflyBackground } from '@/components/butterfly-background'
+import { Toaster } from 'sonner'
 import './globals.css'
 
 const spaceGrotesk = Space_Grotesk({
@@ -57,15 +59,23 @@ export default function RootLayout({
       <head>
         <ThemeInitializer />
       </head>
-      <body className={`${spaceGrotesk.variable} font-sans antialiased flex min-h-screen flex-col bg-[#05070a]`}>
-        <ButterflyBackground />
-        <div className="relative z-10 flex flex-col flex-1">
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
-        </div>
-        <Chatbot />
-        <Analytics />
+      <body className={`${spaceGrotesk.variable} font-sans antialiased flex min-h-screen flex-col bg-background`}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange={false}
+        >
+          <ButterflyBackground />
+          <div className="relative z-10 flex flex-col flex-1">
+            <Navbar />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </div>
+          <Chatbot />
+          <Toaster richColors position="top-right" />
+          <Analytics />
+        </ThemeProvider>
       </body>
     </html>
   )

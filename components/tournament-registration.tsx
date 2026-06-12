@@ -6,20 +6,21 @@ import {
   Plus,
   Users,
   CreditCard,
-  Lock,
   Database,
   Sparkles,
   CheckCircle,
-  Settings,
   Shield,
   Edit2,
   Search,
   RefreshCw,
-  Coins,
-  QrCode,
   X,
-  Smartphone
+  Smartphone,
+  QrCode,
+  Coins,
+  Lock,
 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
 
 interface RegisteredPlayer {
   id: string
@@ -86,33 +87,92 @@ export function TournamentRegistration() {
   const [searchTerm, setSearchTerm] = useState('')
   const [adminSubTab, setAdminSubTab] = useState<'roster' | 'payments'>('roster')
 
+  // Add Player State
+  const [isAddingPlayer, setIsAddingPlayer] = useState(false)
+  const [addingPlayerData, setAddingPlayerData] = useState({
+    name: '',
+    nickname: '',
+    mohalla: 'Saddar Strikers',
+    contactNumber: '',
+    battingStyle: 'Right-handed',
+    paymentMethod: 'JazzCash',
+    paymentStatus: 'Paid'
+  })
+
+  // Edit Payment State
+  const [editingPayment, setEditingPayment] = useState<any | null>(null)
+
+  // Add Payment State
+  const [isAddingPayment, setIsAddingPayment] = useState(false)
+  const [addingPaymentData, setAddingPaymentData] = useState({
+    registrationId: '',
+    amount: 500,
+    currency: 'PKR',
+    method: 'JazzCash',
+    status: 'Paid',
+    txHash: '',
+    paymentDate: ''
+  })
+
   // Payments log state
   const [payments, setPayments] = useState<any[]>([])
   const [paymentsLoading, setPaymentsLoading] = useState(false)
   const [paymentsError, setPaymentsError] = useState<string | null>(null)
   const [lastPaymentInfo, setLastPaymentInfo] = useState<any>(null)
 
-  // API base URL
-  const getApiUrl = () => {
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
-  }
+  // ── Supabase helpers ─────────────────────────────────────────
 
-  // Fetch registrations from Express + SQLite backend
+  // Fetch registrations from Supabase
   const fetchRegistrations = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`${getApiUrl()}/registrations`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch registrations from backend.')
-      }
-      const data = await response.json()
-      setPlayers(data)
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('registrations')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      // Map snake_case DB fields → camelCase component interface
+      setPlayers((data || []).map(mapReg))
       setError(null)
     } catch (err: any) {
-      console.error('Error fetching registrations:', err)
-      setError('Could not connect to database backend. Make sure the server is running.')
+      setError('Could not load registrations: ' + err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Fetch payments from Supabase
+  const fetchPayments = async () => {
+    setPaymentsLoading(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      setPayments(data || [])
+      setPaymentsError(null)
+    } catch (err: any) {
+      setPaymentsError('Could not load payment records: ' + err.message)
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }
+
+  // Map DB row (snake_case) → component interface (camelCase)
+  function mapReg(r: any): RegisteredPlayer {
+    return {
+      id: r.id,
+      name: r.name,
+      mohalla: r.mohalla,
+      nickname: r.nickname,
+      contactNumber: r.contact_number,
+      battingStyle: r.batting_style,
+      paymentMethod: r.payment_method,
+      paymentStatus: r.payment_status,
+      registeredAt: r.registered_at,
     }
   }
 
@@ -132,41 +192,17 @@ export function TournamentRegistration() {
     setPaymentDetails((prev) => ({ ...prev, [name]: value }))
   }
 
-  // Fetch payments list
-  const fetchPayments = async () => {
-    setPaymentsLoading(true)
-    try {
-      const response = await fetch(`${getApiUrl()}/payments`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch payments from backend.')
-      }
-      const data = await response.json()
-      setPayments(data)
-      setPaymentsError(null)
-    } catch (err: any) {
-      console.error('Error fetching payments:', err)
-      setPaymentsError('Could not load payment records.')
-    } finally {
-      setPaymentsLoading(false)
-    }
-  }
-
-  // Delete payment record
+  // Delete payment record via Supabase
   const handleDeletePayment = async (id: string) => {
-    if (!confirm('Are you sure you want to remove this payment record from the database?')) {
-      return
-    }
+    if (!confirm('Are you sure you want to remove this payment record?')) return
     try {
-      const res = await fetch(`${getApiUrl()}/payments/${id}`, {
-        method: 'DELETE'
-      })
-      if (!res.ok) {
-        throw new Error('Failed to delete payment.')
-      }
+      const supabase = createClient()
+      const { error } = await supabase.from('payments').delete().eq('id', id)
+      if (error) throw error
       setPayments((prev) => prev.filter((p) => p.id !== id))
-    } catch (err) {
-      console.error(err)
-      alert('Failed to delete payment from database.')
+      toast.success('Payment deleted')
+    } catch (err: any) {
+      toast.error('Failed to delete payment: ' + err.message)
     }
   }
 
@@ -217,86 +253,71 @@ export function TournamentRegistration() {
     setPaymentErrors(null)
     setPaymentStep('simulating')
     
-    // Call real Payment checkout API in backend
+    // Insert registration + payment directly into Supabase
     try {
-      const payload = {
-        player: {
+      const supabase = createClient()
+      const regId = 'REG-' + Date.now()
+
+      const { data: regData, error: regError } = await supabase
+        .from('registrations')
+        .insert({
+          id: regId,
           name: formData.name.trim(),
           nickname: formData.nickname.trim(),
           mohalla: formData.mohalla,
-          contactNumber: formData.contactNumber.trim(),
-          battingStyle: formData.battingStyle,
-        },
-        payment: {
-          method: formData.paymentMethod,
-          amount: 500, // PKR 500
+          contact_number: formData.contactNumber.trim(),
+          batting_style: formData.battingStyle,
+          payment_method: formData.paymentMethod,
+          payment_status: 'Paid',
+          registered_at: new Date().toLocaleString(),
+        })
+        .select()
+        .single()
+
+      if (regError) throw regError
+
+      const payId = 'PAY-' + Math.random().toString(36).substring(2, 9).toUpperCase()
+      const { data: payData, error: payError } = await supabase
+        .from('payments')
+        .insert({
+          id: payId,
+          registration_id: regId,
+          amount: 500,
           currency: 'PKR',
-          mobileNumber: paymentDetails.mobileNumber,
-          cardNumber: paymentDetails.cardNumber,
-          expiry: paymentDetails.expiry,
-          cvc: paymentDetails.cvc,
-          txHash: paymentDetails.txHash
-        }
-      }
+          method: formData.paymentMethod,
+          status: 'Paid',
+          tx_hash: paymentDetails.txHash || 'TXN-' + Math.random().toString(36).substring(2, 12).toUpperCase(),
+          payment_date: new Date().toLocaleString(),
+        })
+        .select()
+        .single()
 
-      const res = await fetch(`${getApiUrl()}/payments/process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      })
+      if (payError) throw payError
 
-      const responseData = await res.json()
-
-      if (!res.ok) {
-        throw new Error(responseData.error || 'Payment processing failed.')
-      }
-
-      setPlayers((prev) => [responseData.registration, ...prev])
-      setLastPaymentInfo(responseData.payment)
+      setPlayers((prev) => [mapReg(regData), ...prev])
+      setLastPaymentInfo(payData)
       setPaymentStep('success')
-      
-      // Reset form
-      setFormData({
-        name: '',
-        mohalla: 'Saddar Strikers',
-        nickname: '',
-        contactNumber: '',
-        battingStyle: 'Right-handed',
-        paymentMethod: 'JazzCash',
-      })
-      setPaymentDetails({
-        mobileNumber: '',
-        cardNumber: '',
-        expiry: '',
-        cvc: '',
-        cryptoAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
-        txHash: ''
-      })
+      toast.success('Registration & payment saved to Supabase!')
+
+      setFormData({ name: '', mohalla: 'Saddar Strikers', nickname: '', contactNumber: '', battingStyle: 'Right-handed', paymentMethod: 'JazzCash' })
+      setPaymentDetails({ mobileNumber: '', cardNumber: '', expiry: '', cvc: '', cryptoAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F', txHash: '' })
     } catch (err: any) {
-      console.error(err)
-      setPaymentErrors(err.message || 'Failed to complete transaction database entry.')
+      setPaymentErrors(err.message || 'Failed to save registration.')
       setPaymentStep('details')
     }
   }
 
-  // Delete registration (CRUD - Delete)
+  // Delete registration via Supabase
   const handleDeleteRegistration = async (id: string) => {
-    if (!confirm('Are you sure you want to remove this registration permanently from database?')) {
-      return
-    }
+    if (!confirm('Remove this registration permanently?')) return
     try {
-      const res = await fetch(`${getApiUrl()}/registrations/${id}`, {
-        method: 'DELETE'
-      })
-      if (!res.ok) {
-        throw new Error('Failed to delete registration.')
-      }
+      const supabase = createClient()
+      const { error } = await supabase.from('registrations').delete().eq('id', id)
+      if (error) throw error
       setPlayers((prev) => prev.filter((p) => p.id !== id))
-    } catch (err) {
-      console.error(err)
-      alert('Failed to delete registration from database.')
+      toast.success('Registration deleted')
+    } catch (err: any) {
+      toast.error('Failed to delete: ' + err.message)
     }
   }
 
@@ -305,28 +326,159 @@ export function TournamentRegistration() {
     setEditingPlayer({ ...player })
   }
 
-  // Save Edits (CRUD - Update)
+  // Save Edits via Supabase
   const saveEdit = async () => {
     if (!editingPlayer) return
     try {
-      const res = await fetch(`${getApiUrl()}/registrations/${editingPlayer.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(editingPlayer)
-      })
-
-      if (!res.ok) {
-        throw new Error('Failed to update registration.')
-      }
-
-      const updated = await res.json()
-      setPlayers((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('registrations')
+        .update({
+          name: editingPlayer.name,
+          nickname: editingPlayer.nickname,
+          mohalla: editingPlayer.mohalla,
+          contact_number: editingPlayer.contactNumber,
+          batting_style: editingPlayer.battingStyle,
+          payment_method: editingPlayer.paymentMethod,
+          payment_status: editingPlayer.paymentStatus,
+        })
+        .eq('id', editingPlayer.id)
+        .select()
+        .single()
+      if (error) throw error
+      setPlayers((prev) => prev.map((p) => p.id === data.id ? mapReg(data) : p))
       setEditingPlayer(null)
-    } catch (err) {
-      console.error(err)
-      alert('Failed to save updates to database.')
+      toast.success('Registration updated')
+    } catch (err: any) {
+      toast.error('Failed to update: ' + err.message)
+    }
+  }
+
+  // Add Player via Supabase
+  const handleAddPlayer = async () => {
+    if (!addingPlayerData.name || !addingPlayerData.nickname || !addingPlayerData.contactNumber) {
+      toast.error('Fill out Name, Nickname, and Contact Number')
+      return
+    }
+    try {
+      const supabase = createClient()
+      const id = 'REG-' + Date.now()
+      const { data, error } = await supabase
+        .from('registrations')
+        .insert({
+          id,
+          name: addingPlayerData.name,
+          nickname: addingPlayerData.nickname,
+          mohalla: addingPlayerData.mohalla,
+          contact_number: addingPlayerData.contactNumber,
+          batting_style: addingPlayerData.battingStyle,
+          payment_method: addingPlayerData.paymentMethod,
+          payment_status: addingPlayerData.paymentStatus,
+          registered_at: new Date().toLocaleString(),
+        })
+        .select()
+        .single()
+      if (error) throw error
+      setPlayers((prev) => [mapReg(data), ...prev])
+      setIsAddingPlayer(false)
+      toast.success('Player added')
+    } catch (err: any) {
+      toast.error('Failed to add player: ' + err.message)
+    }
+  }
+
+  // Add Payment via Supabase
+  const handleAddPayment = async () => {
+    if (!addingPaymentData.registrationId || !addingPaymentData.amount) {
+      toast.error('Fill out Registration ID and Amount')
+      return
+    }
+    try {
+      const supabase = createClient()
+      const id = 'PAY-' + Math.random().toString(36).substring(2, 9).toUpperCase()
+      const { data, error } = await supabase
+        .from('payments')
+        .insert({
+          id,
+          registration_id: addingPaymentData.registrationId,
+          amount: addingPaymentData.amount,
+          currency: addingPaymentData.currency,
+          method: addingPaymentData.method,
+          status: addingPaymentData.status,
+          tx_hash: addingPaymentData.txHash || 'TXN-' + Math.random().toString(36).substring(2, 12).toUpperCase(),
+          payment_date: addingPaymentData.paymentDate || new Date().toLocaleString(),
+        })
+        .select()
+        .single()
+      if (error) throw error
+      setPayments((prev) => [data, ...prev])
+      setIsAddingPayment(false)
+      toast.success('Payment added')
+    } catch (err: any) {
+      toast.error('Failed to add payment: ' + err.message)
+    }
+  }
+
+  // Save Payment Edit via Supabase
+  const handleSavePaymentEdit = async () => {
+    if (!editingPayment) return
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('payments')
+        .update({
+          registration_id: editingPayment.registrationId || editingPayment.registration_id,
+          amount: editingPayment.amount,
+          currency: editingPayment.currency,
+          method: editingPayment.method,
+          status: editingPayment.status,
+          tx_hash: editingPayment.txHash || editingPayment.tx_hash,
+          payment_date: editingPayment.paymentDate || editingPayment.payment_date,
+        })
+        .eq('id', editingPayment.id)
+        .select()
+        .single()
+      if (error) throw error
+      setPayments((prev) => prev.map((p) => p.id === data.id ? data : p))
+      setEditingPayment(null)
+      toast.success('Payment updated')
+    } catch (err: any) {
+      toast.error('Failed to update payment: ' + err.message)
+    }
+  }
+
+  // Seed Database — insert sample records into Supabase
+  const handleSeedDatabase = async () => {
+    if (!confirm('This will add sample registrations/payments to Supabase. Proceed?')) return
+    try {
+      const supabase = createClient()
+      const seedRegs = [
+        { id: 'REG-SEED-1', name: 'Babar Azam', nickname: 'Bobby', mohalla: 'Model Town Titans', contact_number: '03001234567', batting_style: 'Right-handed', payment_method: 'JazzCash', payment_status: 'Paid', registered_at: new Date().toLocaleString() },
+        { id: 'REG-SEED-2', name: 'Shaheen Afridi', nickname: 'Eagle', mohalla: 'Defence Dragons', contact_number: '03123456789', batting_style: 'Left-handed', payment_method: 'EasyPaisa', payment_status: 'Paid', registered_at: new Date().toLocaleString() },
+        { id: 'REG-SEED-3', name: 'Mohammad Rizwan', nickname: 'Superman', mohalla: 'Gulberg Gladiators', contact_number: '03219876543', batting_style: 'Right-handed', payment_method: 'Stripe', payment_status: 'Paid', registered_at: new Date().toLocaleString() },
+      ]
+      const { error } = await supabase.from('registrations').upsert(seedRegs)
+      if (error) throw error
+      toast.success('Sample data seeded to Supabase!')
+      fetchRegistrations()
+      fetchPayments()
+    } catch (err: any) {
+      toast.error('Seed failed: ' + err.message)
+    }
+  }
+
+  // Clear Database — delete all registrations from Supabase
+  const handleClearDatabase = async () => {
+    if (!confirm('Delete ALL registrations and payments? This cannot be undone.')) return
+    try {
+      const supabase = createClient()
+      await supabase.from('payments').delete().neq('id', '')
+      await supabase.from('registrations').delete().neq('id', '')
+      setPlayers([])
+      setPayments([])
+      toast.success('All records cleared')
+    } catch (err: any) {
+      toast.error('Clear failed: ' + err.message)
     }
   }
 
@@ -348,7 +500,7 @@ export function TournamentRegistration() {
   )
 
   return (
-    <div className="px-4 py-12 md:py-16 bg-[#05070a] text-foreground relative overflow-hidden border-b border-slate-900 cyber-grid-red">
+    <div className="px-4 py-12 md:py-16 bg-background text-foreground relative overflow-hidden border-b border-border cyber-grid-red">
       {/* Decorative Neon Spheres */}
       <div className="absolute top-[-10%] left-[-10%] w-[35rem] h-[35rem] rounded-full bg-rose-955/5 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[35rem] h-[35rem] rounded-full bg-orange-955/5 blur-[120px] pointer-events-none" />
@@ -360,23 +512,23 @@ export function TournamentRegistration() {
             <Sparkles className="h-3 w-3 animate-pulse" />
             3D Cyber Roster
           </div>
-          <h2 className="text-glow-primary text-balance text-4xl font-black text-white tracking-tight md:text-5xl uppercase">
+          <h2 className="text-glow-primary text-balance text-4xl font-black text-foreground tracking-tight md:text-5xl uppercase">
             Tournament Registrations
           </h2>
-          <p className="mt-4 text-sm text-slate-400 max-w-xl mx-auto md:text-base font-bold">
-            Powering Gully XI Premier League registrations end-to-end via Express API server and persistent SQLite Database.
+          <p className="mt-4 text-sm text-muted-foreground max-w-xl mx-auto md:text-base font-bold">
+            Powering Gully XI Premier League registrations end-to-end via Supabase — persistent PostgreSQL database.
           </p>
         </div>
 
         {/* Tab Switcher */}
         <div className="flex justify-center mb-10">
-          <div className="inline-flex p-1 bg-slate-950 border border-rose-500/10 val-cut-sm">
+          <div className="inline-flex p-1 bg-card border border-rose-500/10 val-cut-sm">
             <button
               onClick={() => setActiveTab('register')}
               className={`flex items-center gap-2 px-6 py-2.5 text-xs font-black uppercase tracking-wider transition-all val-cut-sm ${
                 activeTab === 'register'
-                  ? 'bg-primary text-slate-950 font-black shadow-lg shadow-rose-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900/50'
+                  ? 'bg-primary text-primary-foreground font-black shadow-lg shadow-rose-600/30'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
               }`}
             >
               <Users className="h-4 w-4" />
@@ -386,8 +538,8 @@ export function TournamentRegistration() {
               onClick={() => setActiveTab('admin')}
               className={`flex items-center gap-2 px-6 py-2.5 text-xs font-black uppercase tracking-wider transition-all val-cut-sm ${
                 activeTab === 'admin'
-                  ? 'bg-primary text-slate-950 font-black shadow-lg shadow-rose-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900/50'
+                  ? 'bg-primary text-primary-foreground font-black shadow-lg shadow-rose-600/30'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
               }`}
             >
               <Shield className="h-4 w-4" />
@@ -416,10 +568,10 @@ export function TournamentRegistration() {
             <div className="md:col-span-2 transform-style-3d">
               <form
                 onSubmit={handleOpenPayment}
-                className="p-7 val-cut border border-rose-500/10 bg-slate-950/60 esports-bracket"
+                className="p-7 val-cut border border-rose-500/10 bg-card/60 esports-bracket"
               >
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-black text-white tracking-wider uppercase">
+                  <h3 className="text-xl font-black text-foreground tracking-wider uppercase">
                     Player Entry Form
                   </h3>
                   <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
@@ -430,7 +582,7 @@ export function TournamentRegistration() {
                 <div className="space-y-4">
                   {/* Name */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       Full Name *
                     </label>
                     <input
@@ -440,13 +592,13 @@ export function TournamentRegistration() {
                       onChange={handleInputChange}
                       placeholder="e.g., Ahmed Khan"
                       required
-                      className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="mt-1.5 w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     />
                   </div>
 
                   {/* Nickname */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       Cricket Nickname *
                     </label>
                     <input
@@ -456,20 +608,20 @@ export function TournamentRegistration() {
                       onChange={handleInputChange}
                       placeholder="e.g., Sixer"
                       required
-                      className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="mt-1.5 w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     />
                   </div>
 
                   {/* Mohalla/Team */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       Mohalla / Team Selection *
                     </label>
                     <select
                       name="mohalla"
                       value={formData.mohalla}
                       onChange={handleInputChange}
-                      className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="mt-1.5 w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     >
                       {MOHALLA_OPTIONS.map((opt) => (
                         <option key={opt} value={opt}>
@@ -481,7 +633,7 @@ export function TournamentRegistration() {
 
                   {/* Contact Number */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       Contact Number (Phone) *
                     </label>
                     <input
@@ -491,20 +643,20 @@ export function TournamentRegistration() {
                       onChange={handleInputChange}
                       placeholder="e.g., 03001234567"
                       required
-                      className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="mt-1.5 w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     />
                   </div>
 
                   {/* Batting Style */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       Batting Style *
                     </label>
                     <select
                       name="battingStyle"
                       value={formData.battingStyle}
                       onChange={handleInputChange}
-                      className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="mt-1.5 w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     >
                       <option value="Right-handed">Right-handed</option>
                       <option value="Left-handed">Left-handed</option>
@@ -513,14 +665,14 @@ export function TournamentRegistration() {
 
                   {/* Payment Method */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       Payment Gateway Method *
                     </label>
                     <select
                       name="paymentMethod"
                       value={formData.paymentMethod}
                       onChange={handleInputChange}
-                      className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-white focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      className="mt-1.5 w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     >
                       <option value="JazzCash">JazzCash (mock)</option>
                       <option value="EasyPaisa">EasyPaisa (mock)</option>
@@ -542,12 +694,12 @@ export function TournamentRegistration() {
                   Proceed to Payment
                 </button>
 
-                <div className="mt-4 flex items-center justify-between text-xs text-slate-400 bg-slate-950/60 p-3 val-cut-sm border border-slate-900">
+                <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground bg-card/60 p-3 val-cut-sm border border-border">
                   <div className="flex items-center gap-1.5">
                     <Users className="h-4 w-4 text-primary" />
                     <span>Roster Size:</span>
                   </div>
-                  <span className="font-extrabold text-white">
+                  <span className="font-extrabold text-foreground">
                     {loading ? '...' : `${players.length} / ${MAX_PLAYERS}`}
                   </span>
                 </div>
@@ -556,33 +708,33 @@ export function TournamentRegistration() {
 
             {/* List Panel */}
             <div className="md:col-span-3 transform-style-3d">
-              <div className="p-7 val-cut border border-rose-500/10 bg-slate-950/60 esports-bracket h-full flex flex-col">
+              <div className="p-7 val-cut border border-rose-500/10 bg-card/60 esports-bracket h-full flex flex-col">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-black text-white tracking-wider uppercase">
+                  <h3 className="text-xl font-black text-foreground tracking-wider uppercase">
                     Live Tournament Roster
                   </h3>
                   <span className="inline-flex items-center gap-1 text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
-                    <Database className="h-3 w-3" /> SQLite Connected
+                    <Database className="h-3 w-3" /> Supabase Connected
                   </span>
                 </div>
 
                 {loading ? (
-                  <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-500">
+                  <div className="flex-1 flex flex-col items-center justify-center py-20 text-muted-foreground/70">
                     <RefreshCw className="h-8 w-8 animate-spin text-primary mb-3" />
                     <p className="text-sm font-bold uppercase tracking-wide">Loading records...</p>
                   </div>
                 ) : players.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-500 text-center">
+                  <div className="flex-1 flex flex-col items-center justify-center py-20 text-muted-foreground/70 text-center">
                     <Users className="h-14 w-14 text-slate-800 mb-3" />
-                    <p className="text-sm font-bold text-slate-400">No players registered yet.</p>
-                    <p className="text-xs text-slate-600 mt-1">Be the first to enter the arena!</p>
+                    <p className="text-sm font-bold text-muted-foreground">No players registered yet.</p>
+                    <p className="text-xs text-muted-foreground/50 mt-1">Be the first to enter the arena!</p>
                   </div>
                 ) : (
                   <div className="flex-1 overflow-y-auto max-h-[460px] pr-2 space-y-4">
                     {players.map((p, idx) => (
                       <div
                         key={p.id}
-                        className="p-4 val-cut-sm border border-slate-900 bg-slate-950/40 hover:border-primary/30 transition-all flex items-center justify-between group shadow-sm"
+                        className="p-4 val-cut-sm border border-border bg-card/40 hover:border-primary/30 transition-all flex items-center justify-between group shadow-sm"
                       >
                         <div className="flex items-center gap-4">
                           {/* Rank badge */}
@@ -591,16 +743,16 @@ export function TournamentRegistration() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-extrabold text-white">{p.name}</h4>
+                              <h4 className="text-sm font-extrabold text-foreground">{p.name}</h4>
                               <span className="text-[10px] px-1.5 py-0.5 rounded font-black bg-primary/10 border border-primary/20 text-primary">
                                 "{p.nickname}"
                               </span>
                             </div>
-                            <p className="text-xs text-slate-400 mt-0.5 font-semibold">
+                            <p className="text-xs text-muted-foreground mt-0.5 font-semibold">
                               {p.mohalla} • {p.battingStyle}
                             </p>
                             <div className="flex items-center gap-2 mt-2">
-                              <span className="text-[10px] font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-850">
+                              <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded border border-border">
                                 {p.paymentMethod}
                               </span>
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
@@ -617,7 +769,7 @@ export function TournamentRegistration() {
                         {/* Trash Button for general users (admin has full control on portal) */}
                         <button
                           onClick={() => handleDeleteRegistration(p.id)}
-                          className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-500 hover:text-white"
+                          className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-500 hover:text-foreground"
                           title="Remove Player"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -633,45 +785,59 @@ export function TournamentRegistration() {
 
         {/* Tab 2: Admin Portal */}
         {activeTab === 'admin' && (
-          <div className="p-7 val-cut border border-rose-500/10 bg-slate-950/60 transform-style-3d esports-bracket">
+          <div className="p-7 val-cut border border-rose-500/10 bg-card/60 transform-style-3d esports-bracket">
             {/* Header info */}
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-4 border-b border-slate-900">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-4 border-b border-border">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-2xl font-black text-white tracking-wider uppercase">
+                  <h3 className="text-2xl font-black text-foreground tracking-wider uppercase">
                     Admin Roster Console
                   </h3>
                   <span className="text-xs font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2.5 py-0.5 rounded-full">
                     Authorized
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-1 font-bold">
+                <p className="text-xs text-muted-foreground mt-1 font-bold">
                   Full CRUD & database schema editing dashboard.
                 </p>
+                <div className="flex gap-2.5 mt-3">
+                  <button
+                    onClick={handleSeedDatabase}
+                    className="flex items-center gap-1.5 px-3 py-1.5 val-cut-sm bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-primary-foreground transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer"
+                  >
+                    Seed Synthetic Data
+                  </button>
+                  <button
+                    onClick={handleClearDatabase}
+                    className="flex items-center gap-1.5 px-3 py-1.5 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-foreground transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer"
+                  >
+                    Clear Database
+                  </button>
+                </div>
               </div>
 
               {/* DB Schema Box */}
-              <div className="bg-slate-950 p-3 val-cut-sm border border-slate-900 text-[10px] text-slate-400 max-w-md font-mono">
+              <div className="bg-card p-3 val-cut-sm border border-border text-[10px] text-muted-foreground max-w-md font-mono">
                 <div className="flex items-center gap-1.5 text-primary font-bold mb-1">
                   <Database className="h-3.5 w-3.5" />
-                  <span>SQLite Database Schema</span>
+                  <span>Supabase PostgreSQL Schema</span>
                 </div>
                 {adminSubTab === 'roster' ? (
-                  <code>Schema registrations: id(TEXT PK), name(TEXT), nickname(TEXT), mohalla(TEXT), contactNumber(TEXT), battingStyle(TEXT), paymentMethod(TEXT), paymentStatus(TEXT), registeredAt(TEXT)</code>
+                  <code>registrations: id, name, nickname, mohalla, contact_number, batting_style, payment_method, payment_status, registered_at</code>
                 ) : (
-                  <code>Schema payments: id(TEXT PK), registrationId(TEXT), amount(INTEGER), currency(TEXT), method(TEXT), status(TEXT), txHash(TEXT), paymentDate(TEXT)</code>
+                  <code>payments: id, registration_id, amount, currency, method, status, tx_hash, payment_date</code>
                 )}
               </div>
             </div>
 
             {/* Admin Sub-Tabs */}
-            <div className="flex gap-6 mb-6 border-b border-slate-900 pb-2">
+            <div className="flex gap-6 mb-6 border-b border-border pb-2">
               <button
                 onClick={() => setAdminSubTab('roster')}
                 className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 ${
                   adminSubTab === 'roster'
                     ? 'border-primary text-primary'
-                    : 'border-transparent text-slate-400 hover:text-white'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Roster List ({players.length})
@@ -684,7 +850,7 @@ export function TournamentRegistration() {
                 className={`pb-2 text-xs font-black uppercase tracking-wider transition-all border-b-2 ${
                   adminSubTab === 'payments'
                     ? 'border-primary text-primary'
-                    : 'border-transparent text-slate-400 hover:text-white'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Payments Log ({payments.length})
@@ -695,20 +861,57 @@ export function TournamentRegistration() {
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
               {/* Search */}
               <div className="relative w-full md:max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70" />
                 <input
                   type="text"
                   placeholder={adminSubTab === 'roster' ? "Search player, nickname..." : "Search ID, method, hash..."}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-800 bg-slate-950/80 text-sm text-white placeholder:text-slate-600 focus:border-primary focus:outline-none"
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                 />
               </div>
 
               <div className="flex items-center gap-2.5">
+                {adminSubTab === 'roster' ? (
+                  <button
+                    onClick={() => {
+                      setAddingPlayerData({
+                        name: '',
+                        nickname: '',
+                        mohalla: 'Saddar Strikers',
+                        contactNumber: '',
+                        battingStyle: 'Right-handed',
+                        paymentMethod: 'JazzCash',
+                        paymentStatus: 'Paid'
+                      })
+                      setIsAddingPlayer(true)
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 val-cut-sm bg-primary border border-primary text-primary-foreground hover:bg-rose-500 hover:border-rose-500 hover:text-foreground transition-all text-xs font-bold uppercase"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Player
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setAddingPaymentData({
+                        registrationId: '',
+                        amount: 500,
+                        currency: 'PKR',
+                        method: 'JazzCash',
+                        status: 'Paid',
+                        txHash: '',
+                        paymentDate: new Date().toLocaleString()
+                      })
+                      setIsAddingPayment(true)
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 val-cut-sm bg-primary border border-primary text-primary-foreground hover:bg-rose-500 hover:border-rose-500 hover:text-foreground transition-all text-xs font-bold uppercase"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Payment Log
+                  </button>
+                )}
                 <button
                   onClick={adminSubTab === 'roster' ? fetchRegistrations : fetchPayments}
-                  className="flex items-center gap-1.5 px-4 py-2.5 val-cut-sm border border-slate-800 hover:border-primary/45 text-slate-300 hover:text-white transition-all text-xs font-bold uppercase"
+                  className="flex items-center gap-1.5 px-4 py-2.5 val-cut-sm border border-border hover:border-primary/45 text-foreground/80 hover:text-foreground transition-all text-xs font-bold uppercase"
                 >
                   <RefreshCw className="h-3.5 w-3.5" /> Reload Database
                 </button>
@@ -719,19 +922,19 @@ export function TournamentRegistration() {
             {adminSubTab === 'roster' && (
               <>
                 {loading ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                  <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/70">
                     <RefreshCw className="h-8 w-8 animate-spin text-primary mb-3" />
                     <p className="text-sm font-bold">Retrieving secure records...</p>
                   </div>
                 ) : filteredPlayers.length === 0 ? (
-                  <div className="text-center py-20 text-slate-500 bg-slate-950/30 border border-slate-900 rounded-xl">
+                  <div className="text-center py-20 text-muted-foreground/70 bg-secondary/30 border border-border rounded-xl">
                     <p className="text-sm font-bold">No records found matching search criteria.</p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto val-cut-sm border border-slate-900 bg-slate-950/40">
+                  <div className="overflow-x-auto val-cut-sm border border-border bg-card/40">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-slate-950 border-b border-slate-900 text-slate-400 font-bold uppercase tracking-wider">
+                        <tr className="bg-card border-b border-border text-muted-foreground font-bold uppercase tracking-wider">
                           <th className="px-5 py-4">Player</th>
                           <th className="px-5 py-4">Nickname</th>
                           <th className="px-5 py-4">Mohalla / Team</th>
@@ -745,26 +948,26 @@ export function TournamentRegistration() {
                         {filteredPlayers.map((player) => (
                           <tr
                             key={player.id}
-                            className="border-b border-slate-900 hover:bg-slate-900/30 transition-colors"
+                            className="border-b border-border hover:bg-secondary/30 transition-colors"
                           >
-                            <td className="px-5 py-4 font-black text-white">
+                            <td className="px-5 py-4 font-black text-foreground">
                               {player.name}
                             </td>
                             <td className="px-5 py-4 text-primary font-black">
                               "{player.nickname}"
                             </td>
-                            <td className="px-5 py-4 text-slate-300 font-semibold">
+                            <td className="px-5 py-4 text-foreground/80 font-semibold">
                               {player.mohalla}
                             </td>
-                            <td className="px-5 py-4 text-slate-400 font-mono">
+                            <td className="px-5 py-4 text-muted-foreground font-mono">
                               {player.contactNumber}
                             </td>
-                            <td className="px-5 py-4 text-slate-400 font-semibold">
+                            <td className="px-5 py-4 text-muted-foreground font-semibold">
                               {player.battingStyle}
                             </td>
                             <td className="px-5 py-4">
                               <div className="flex flex-col gap-0.5">
-                                <span className="font-bold text-white text-[10px] bg-slate-950 px-1.5 py-0.5 rounded border border-slate-850 inline-block w-fit">
+                                <span className="font-bold text-foreground text-[10px] bg-card px-1.5 py-0.5 rounded border border-border inline-block w-fit">
                                   {player.paymentMethod}
                                 </span>
                                 <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border w-fit ${
@@ -780,14 +983,14 @@ export function TournamentRegistration() {
                               <div className="flex items-center justify-center gap-2">
                                 <button
                                   onClick={() => startEdit(player)}
-                                  className="p-2 val-cut-sm bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-slate-950 transition-all"
+                                  className="p-2 val-cut-sm bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground transition-all"
                                   title="Edit Registration"
                                 >
                                   <Edit2 className="h-3.5 w-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteRegistration(player.id)}
-                                  className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition-all"
+                                  className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-foreground transition-all"
                                   title="Delete Registration"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -807,7 +1010,7 @@ export function TournamentRegistration() {
             {adminSubTab === 'payments' && (
               <>
                 {paymentsLoading ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                  <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/70">
                     <RefreshCw className="h-8 w-8 animate-spin text-primary mb-3" />
                     <p className="text-sm font-bold">Retrieving transaction history...</p>
                   </div>
@@ -816,14 +1019,14 @@ export function TournamentRegistration() {
                     <p className="text-sm font-bold">{paymentsError}</p>
                   </div>
                 ) : filteredPayments.length === 0 ? (
-                  <div className="text-center py-20 text-slate-500 bg-slate-950/30 border border-slate-900 rounded-xl">
+                  <div className="text-center py-20 text-muted-foreground/70 bg-secondary/30 border border-border rounded-xl">
                     <p className="text-sm font-bold">No payment logs found matching search criteria.</p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto val-cut-sm border border-slate-900 bg-slate-950/40">
+                  <div className="overflow-x-auto val-cut-sm border border-border bg-card/40">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-slate-950 border-b border-slate-900 text-slate-400 font-bold uppercase tracking-wider">
+                        <tr className="bg-card border-b border-border text-muted-foreground font-bold uppercase tracking-wider">
                           <th className="px-5 py-4">Receipt ID</th>
                           <th className="px-5 py-4">Reg ID</th>
                           <th className="px-5 py-4">Amount</th>
@@ -837,31 +1040,38 @@ export function TournamentRegistration() {
                         {filteredPayments.map((p) => (
                           <tr
                             key={p.id}
-                            className="border-b border-slate-900 hover:bg-slate-900/30 transition-colors"
+                            className="border-b border-border hover:bg-secondary/30 transition-colors"
                           >
-                            <td className="px-5 py-4 font-black text-white font-mono">
+                            <td className="px-5 py-4 font-black text-foreground font-mono">
                               {p.id}
                             </td>
-                            <td className="px-5 py-4 text-slate-300 font-mono">
+                            <td className="px-5 py-4 text-foreground/80 font-mono">
                               {p.registrationId}
                             </td>
                             <td className="px-5 py-4 font-bold text-emerald-400 font-mono">
                               {p.amount} {p.currency}
                             </td>
-                            <td className="px-5 py-4 text-slate-300 font-extrabold uppercase">
+                            <td className="px-5 py-4 text-foreground/80 font-extrabold uppercase">
                               {p.method}
                             </td>
-                            <td className="px-5 py-4 text-slate-400 font-mono truncate max-w-[120px]" title={p.txHash}>
+                            <td className="px-5 py-4 text-muted-foreground font-mono truncate max-w-[120px]" title={p.txHash}>
                               {p.txHash}
                             </td>
-                            <td className="px-5 py-4 text-slate-400">
+                            <td className="px-5 py-4 text-muted-foreground">
                               {p.paymentDate}
                             </td>
                             <td className="px-5 py-4">
                               <div className="flex items-center justify-center gap-2">
                                 <button
+                                  onClick={() => setEditingPayment({ ...p })}
+                                  className="p-2 val-cut-sm bg-primary/10 border border-primary/20 text-primary hover:bg-primary hover:text-primary-foreground transition-all"
+                                  title="Edit Payment Record"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
                                   onClick={() => handleDeletePayment(p.id)}
-                                  className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white transition-all"
+                                  className="p-2 val-cut-sm bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-foreground transition-all"
                                   title="Delete Payment Record"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -881,52 +1091,52 @@ export function TournamentRegistration() {
 
         {/* Modal: Editing Player (CRUD Update) */}
         {editingPlayer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-            <div className="w-full max-w-md val-cut border border-rose-500/25 bg-slate-950 p-6 shadow-2xl relative esports-bracket">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-input backdrop-blur-md p-4">
+            <div className="w-full max-w-md val-cut border border-rose-500/25 bg-card p-6 shadow-2xl relative esports-bracket">
               <button
                 onClick={() => setEditingPlayer(null)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white"
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-5 w-5" />
               </button>
 
-              <h4 className="text-xl font-black text-white mb-4 flex items-center gap-2 border-b border-slate-900 pb-3 uppercase tracking-wider">
+              <h4 className="text-xl font-black text-foreground mb-4 flex items-center gap-2 border-b border-border pb-3 uppercase tracking-wider">
                 <Edit2 className="h-5 w-5 text-primary" /> Update Registration
               </h4>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Player Name
                   </label>
                   <input
                     type="text"
                     value={editingPlayer.name}
                     onChange={(e) => setEditingPlayer({ ...editingPlayer, name: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Nickname
                   </label>
                   <input
                     type="text"
                     value={editingPlayer.nickname}
                     onChange={(e) => setEditingPlayer({ ...editingPlayer, nickname: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Mohalla / Team
                   </label>
                   <select
                     value={editingPlayer.mohalla}
                     onChange={(e) => setEditingPlayer({ ...editingPlayer, mohalla: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
                   >
                     {MOHALLA_OPTIONS.map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
@@ -935,25 +1145,25 @@ export function TournamentRegistration() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Contact Number
                   </label>
                   <input
                     type="text"
                     value={editingPlayer.contactNumber}
                     onChange={(e) => setEditingPlayer({ ...editingPlayer, contactNumber: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                     Batting Style
                   </label>
                   <select
                     value={editingPlayer.battingStyle}
                     onChange={(e) => setEditingPlayer({ ...editingPlayer, battingStyle: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
                   >
                     <option value="Right-handed">Right-handed</option>
                     <option value="Left-handed">Left-handed</option>
@@ -962,13 +1172,13 @@ export function TournamentRegistration() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       Payment Method
                     </label>
                     <select
                       value={editingPlayer.paymentMethod}
                       onChange={(e) => setEditingPlayer({ ...editingPlayer, paymentMethod: e.target.value })}
-                      className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                      className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
                     >
                       <option value="JazzCash">JazzCash</option>
                       <option value="EasyPaisa">EasyPaisa</option>
@@ -981,13 +1191,13 @@ export function TournamentRegistration() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
                       Payment Status
                     </label>
                     <select
                       value={editingPlayer.paymentStatus}
                       onChange={(e) => setEditingPlayer({ ...editingPlayer, paymentStatus: e.target.value })}
-                      className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                      className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
                     >
                       <option value="Pending">Pending</option>
                       <option value="Paid">Paid</option>
@@ -997,10 +1207,10 @@ export function TournamentRegistration() {
                 </div>
               </div>
 
-              <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-900 pt-4">
+              <div className="mt-6 flex items-center justify-end gap-3 border-t border-border pt-4">
                 <button
                   onClick={() => setEditingPlayer(null)}
-                  className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white"
+                  className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground"
                 >
                   Cancel
                 </button>
@@ -1017,24 +1227,24 @@ export function TournamentRegistration() {
 
         {/* Modal: Payment Simulation Gateway */}
         {showPaymentModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
-            <div className="w-full max-w-md val-cut border border-rose-500/25 bg-slate-950 p-6 shadow-2xl relative overflow-hidden esports-bracket">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-card/85 backdrop-blur-md p-4">
+            <div className="w-full max-w-md val-cut border border-rose-500/25 bg-card p-6 shadow-2xl relative overflow-hidden esports-bracket">
               {/* Glowing header bar */}
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-500 via-orange-500 to-rose-500 animate-pulse" />
               
               <button
                 onClick={() => setShowPaymentModal(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white"
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-5 w-5" />
               </button>
 
               {paymentStep === 'details' && (
                 <div>
-                  <h4 className="text-xl font-black text-white mb-2 flex items-center gap-2 uppercase tracking-wider">
+                  <h4 className="text-xl font-black text-foreground mb-2 flex items-center gap-2 uppercase tracking-wider">
                     <CreditCard className="h-5 w-5 text-primary" /> Checkout Payment
                   </h4>
-                  <p className="text-xs text-slate-400 mb-6 font-bold">
+                  <p className="text-xs text-muted-foreground mb-6 font-bold">
                     Simulate secure checkout for tournament registration.
                   </p>
 
@@ -1044,10 +1254,10 @@ export function TournamentRegistration() {
                     </div>
                   )}
 
-                  <div className="bg-slate-950 p-4 val-cut-sm border border-slate-900 mb-6 flex justify-between items-center">
+                  <div className="bg-card p-4 val-cut-sm border border-border mb-6 flex justify-between items-center">
                     <div>
-                      <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest">Tournament Entry Fee</p>
-                      <p className="text-xs text-slate-300 font-bold mt-1 uppercase">Gully XI Premier League</p>
+                      <p className="text-[10px] uppercase font-black text-muted-foreground/70 tracking-widest">Tournament Entry Fee</p>
+                      <p className="text-xs text-foreground/80 font-bold mt-1 uppercase">Gully XI Premier League</p>
                     </div>
                     <span className="text-xl font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20">
                       {REGISTRATION_FEE}
@@ -1063,7 +1273,7 @@ export function TournamentRegistration() {
                           <span>{formData.paymentMethod} Mobile Wallet</span>
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                             Mobile Account Number
                           </label>
                           <input
@@ -1073,10 +1283,10 @@ export function TournamentRegistration() {
                             onChange={handlePaymentDetailsChange}
                             placeholder="e.g., 03001234567"
                             required
-                            className="mt-1.5 w-full rounded-lg border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-primary focus:outline-none"
+                            className="mt-1.5 w-full rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
                           />
                         </div>
-                        <p className="text-[10px] text-slate-500 font-bold">
+                        <p className="text-[10px] text-muted-foreground/70 font-bold">
                           *A simulated verification popup request will be processed.
                         </p>
                       </div>
@@ -1090,7 +1300,7 @@ export function TournamentRegistration() {
                           <span>Mock Card Details ({formData.paymentMethod})</span>
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                             Card Number
                           </label>
                           <input
@@ -1100,12 +1310,12 @@ export function TournamentRegistration() {
                             onChange={handlePaymentDetailsChange}
                             placeholder="4242 4242 4242 4242"
                             required
-                            className="mt-1.5 w-full rounded-lg border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-primary focus:outline-none"
+                            className="mt-1.5 w-full rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                               Expiry
                             </label>
                             <input
@@ -1114,11 +1324,11 @@ export function TournamentRegistration() {
                               value={paymentDetails.expiry}
                               onChange={handlePaymentDetailsChange}
                               placeholder="MM/YY"
-                              className="mt-1.5 w-full rounded-lg border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-primary focus:outline-none"
+                              className="mt-1.5 w-full rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
                             />
                           </div>
                           <div>
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                               CVC
                             </label>
                             <input
@@ -1127,7 +1337,7 @@ export function TournamentRegistration() {
                               value={paymentDetails.cvc}
                               onChange={handlePaymentDetailsChange}
                               placeholder="123"
-                              className="mt-1.5 w-full rounded-lg border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-primary focus:outline-none"
+                              className="mt-1.5 w-full rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
                             />
                           </div>
                         </div>
@@ -1142,26 +1352,26 @@ export function TournamentRegistration() {
                             <Coins className="h-4 w-4" />
                             <span>Crypto Payment ({formData.paymentMethod})</span>
                           </div>
-                          <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                          <span className="text-[10px] font-mono text-muted-foreground/70 bg-card px-1.5 py-0.5 rounded border border-border">
                             Sandbox
                           </span>
                         </div>
-                        <div className="flex items-center justify-center p-3.5 bg-white rounded-lg border border-slate-800 w-32 h-32 mx-auto val-cut-sm">
-                          <QrCode className="w-full h-full text-slate-950" />
+                        <div className="flex items-center justify-center p-3.5 bg-white rounded-lg border border-border w-32 h-32 mx-auto val-cut-sm">
+                          <QrCode className="w-full h-full text-primary-foreground" />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                             Receiver {formData.paymentMethod} Address
                           </label>
                           <input
                             type="text"
                             readOnly
                             value={paymentDetails.cryptoAddress}
-                            className="mt-1.5 w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs font-mono text-slate-400 select-all focus:outline-none"
+                            className="mt-1.5 w-full rounded-lg border border-border bg-input px-3 py-2 text-xs font-mono text-muted-foreground select-all focus:outline-none"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                             Transaction Hash / Wallet Address
                           </label>
                           <input
@@ -1171,7 +1381,7 @@ export function TournamentRegistration() {
                             onChange={handlePaymentDetailsChange}
                             placeholder="Paste transaction TXID hash"
                             required
-                            className="mt-1.5 w-full rounded-lg border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-primary focus:outline-none"
+                            className="mt-1.5 w-full rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
                           />
                         </div>
                       </div>
@@ -1190,8 +1400,8 @@ export function TournamentRegistration() {
               {paymentStep === 'simulating' && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <RefreshCw className="h-10 w-10 animate-spin text-primary mb-4" />
-                  <h4 className="text-lg font-black text-white mb-2 uppercase">Simulating SECURE Transaction...</h4>
-                  <p className="text-xs text-slate-400 max-w-xs font-bold">
+                  <h4 className="text-lg font-black text-foreground mb-2 uppercase">Simulating SECURE Transaction...</h4>
+                  <p className="text-xs text-muted-foreground max-w-xs font-bold">
                     Connecting to mock payment gateway API and updating server registration database records.
                   </p>
                 </div>
@@ -1202,18 +1412,18 @@ export function TournamentRegistration() {
                   <div className="h-14 w-14 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4 shadow shadow-emerald-500/30">
                     <CheckCircle className="h-8 w-8 text-emerald-400" />
                   </div>
-                  <h4 className="text-xl font-black text-white mb-2 uppercase">Registration Complete!</h4>
-                  <p className="text-xs text-slate-400 max-w-xs mb-4 font-bold">
-                    Simulated payment of <strong className="text-white">{REGISTRATION_FEE}</strong> was approved. Your details are saved in the database.
+                  <h4 className="text-xl font-black text-foreground mb-2 uppercase">Registration Complete!</h4>
+                  <p className="text-xs text-muted-foreground max-w-xs mb-4 font-bold">
+                    Simulated payment of <strong className="text-foreground">{REGISTRATION_FEE}</strong> was approved. Your details are saved in the database.
                   </p>
 
                   {lastPaymentInfo && (
-                    <div className="bg-slate-950/80 p-3 val-cut-sm border border-slate-900 text-left w-full mb-6 font-mono text-[10px] text-slate-400 space-y-1.5">
+                    <div className="bg-input p-3 val-cut-sm border border-border text-left w-full mb-6 font-mono text-[10px] text-muted-foreground space-y-1.5">
                       <div className="text-[9px] uppercase font-black text-primary mb-1">Payment Receipt (API Response)</div>
-                      <div><span className="text-slate-500">Transaction ID:</span> <span className="text-white font-bold">{lastPaymentInfo.id}</span></div>
-                      <div><span className="text-slate-500">Gateway Ref:</span> <span className="text-slate-300 select-all">{lastPaymentInfo.txHash}</span></div>
-                      <div><span className="text-slate-500">Amount Paid:</span> <span className="text-emerald-400 font-bold">{lastPaymentInfo.amount} {lastPaymentInfo.currency}</span></div>
-                      <div><span className="text-slate-500">Timestamp:</span> <span className="text-slate-300">{lastPaymentInfo.paymentDate}</span></div>
+                      <div><span className="text-muted-foreground/70">Transaction ID:</span> <span className="text-foreground font-bold">{lastPaymentInfo.id}</span></div>
+                      <div><span className="text-muted-foreground/70">Gateway Ref:</span> <span className="text-foreground/80 select-all">{lastPaymentInfo.txHash}</span></div>
+                      <div><span className="text-muted-foreground/70">Amount Paid:</span> <span className="text-emerald-400 font-bold">{lastPaymentInfo.amount} {lastPaymentInfo.currency}</span></div>
+                      <div><span className="text-muted-foreground/70">Timestamp:</span> <span className="text-foreground/80">{lastPaymentInfo.paymentDate}</span></div>
                     </div>
                   )}
 
@@ -1228,6 +1438,417 @@ export function TournamentRegistration() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Add Player (CRUD Create) */}
+        {isAddingPlayer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-input backdrop-blur-md p-4">
+            <div className="w-full max-w-md val-cut border border-rose-500/25 bg-card p-6 shadow-2xl relative esports-bracket">
+              <button
+                onClick={() => setIsAddingPlayer(false)}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <h4 className="text-xl font-black text-foreground mb-4 flex items-center gap-2 border-b border-border pb-3 uppercase tracking-wider">
+                <Plus className="h-5 w-5 text-primary" /> Register New Player
+              </h4>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Player Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addingPlayerData.name}
+                    onChange={(e) => setAddingPlayerData({ ...addingPlayerData, name: e.target.value })}
+                    placeholder="e.g. Babar Azam"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Nickname *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addingPlayerData.nickname}
+                    onChange={(e) => setAddingPlayerData({ ...addingPlayerData, nickname: e.target.value })}
+                    placeholder="e.g. Bobby"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Mohalla / Team *
+                  </label>
+                  <select
+                    value={addingPlayerData.mohalla}
+                    onChange={(e) => setAddingPlayerData({ ...addingPlayerData, mohalla: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    {MOHALLA_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Contact Number *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addingPlayerData.contactNumber}
+                    onChange={(e) => setAddingPlayerData({ ...addingPlayerData, contactNumber: e.target.value })}
+                    placeholder="e.g. 03001234567"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Batting Style
+                  </label>
+                  <select
+                    value={addingPlayerData.battingStyle}
+                    onChange={(e) => setAddingPlayerData({ ...addingPlayerData, battingStyle: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="Right-handed">Right-handed</option>
+                    <option value="Left-handed">Left-handed</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      Payment Method
+                    </label>
+                    <select
+                      value={addingPlayerData.paymentMethod}
+                      onChange={(e) => setAddingPlayerData({ ...addingPlayerData, paymentMethod: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                    >
+                      <option value="JazzCash">JazzCash</option>
+                      <option value="EasyPaisa">EasyPaisa</option>
+                      <option value="Stripe">Stripe</option>
+                      <option value="PayPal">PayPal</option>
+                      <option value="USDT">USDT</option>
+                      <option value="BTC">BTC</option>
+                      <option value="ETH">ETH</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      Payment Status
+                    </label>
+                    <select
+                      value={addingPlayerData.paymentStatus}
+                      onChange={(e) => setAddingPlayerData({ ...addingPlayerData, paymentStatus: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                    >
+                      <option value="Pending">Pending</option>
+                      <option value="Paid">Paid</option>
+                      <option value="Failed">Failed</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3 border-t border-border pt-4">
+                <button
+                  onClick={() => setIsAddingPlayer(false)}
+                  className="px-4 py-2 rounded-lg text-sm text-slate-450 hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddPlayer}
+                  className="val-btn val-cut-sm px-5 py-2 text-xs font-bold"
+                >
+                  Create Player
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Add Payment (CRUD Create) */}
+        {isAddingPayment && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-input backdrop-blur-md p-4">
+            <div className="w-full max-w-md val-cut border border-rose-500/25 bg-card p-6 shadow-2xl relative esports-bracket">
+              <button
+                onClick={() => setIsAddingPayment(false)}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <h4 className="text-xl font-black text-foreground mb-4 flex items-center gap-2 border-b border-border pb-3 uppercase tracking-wider">
+                <Plus className="h-5 w-5 text-primary" /> Create Payment Log
+              </h4>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Registration ID / Player ID *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addingPaymentData.registrationId}
+                    onChange={(e) => setAddingPaymentData({ ...addingPaymentData, registrationId: e.target.value })}
+                    placeholder="e.g. REG-1001 or 1718223948"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      Amount *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={addingPaymentData.amount}
+                      onChange={(e) => setAddingPaymentData({ ...addingPaymentData, amount: parseInt(e.target.value) || 0 })}
+                      className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      Currency
+                    </label>
+                    <input
+                      type="text"
+                      value={addingPaymentData.currency}
+                      onChange={(e) => setAddingPaymentData({ ...addingPaymentData, currency: e.target.value })}
+                      placeholder="PKR"
+                      className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Payment Method
+                  </label>
+                  <select
+                    value={addingPaymentData.method}
+                    onChange={(e) => setAddingPaymentData({ ...addingPaymentData, method: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="JazzCash">JazzCash</option>
+                    <option value="EasyPaisa">EasyPaisa</option>
+                    <option value="Stripe">Stripe</option>
+                    <option value="PayPal">PayPal</option>
+                    <option value="USDT">USDT</option>
+                    <option value="BTC">BTC</option>
+                    <option value="ETH">ETH</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Status
+                  </label>
+                  <select
+                    value={addingPaymentData.status}
+                    onChange={(e) => setAddingPaymentData({ ...addingPaymentData, status: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="Paid">Paid</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Failed">Failed</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Transaction Hash / TXID
+                  </label>
+                  <input
+                    type="text"
+                    value={addingPaymentData.txHash}
+                    onChange={(e) => setAddingPaymentData({ ...addingPaymentData, txHash: e.target.value })}
+                    placeholder="e.g. TXN-JAZZCASH1001"
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3 border-t border-border pt-4">
+                <button
+                  onClick={() => setIsAddingPayment(false)}
+                  className="px-4 py-2 rounded-lg text-sm text-slate-450 hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddPayment}
+                  className="val-btn val-cut-sm px-5 py-2 text-xs font-bold"
+                >
+                  Add Record
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Edit Payment (CRUD Update) */}
+        {editingPayment && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-input backdrop-blur-md p-4">
+            <div className="w-full max-w-md val-cut border border-rose-500/25 bg-card p-6 shadow-2xl relative esports-bracket">
+              <button
+                onClick={() => setEditingPayment(null)}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <h4 className="text-xl font-black text-foreground mb-4 flex items-center gap-2 border-b border-border pb-3 uppercase tracking-wider">
+                <Edit2 className="h-5 w-5 text-primary" /> Update Payment Log
+              </h4>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Receipt ID
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={editingPayment.id}
+                    className="mt-1 w-full rounded-lg border border-border bg-input px-3 py-2 text-xs font-mono text-muted-foreground focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Registration ID / Player ID *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPayment.registrationId}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, registrationId: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      Amount *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={editingPayment.amount}
+                      onChange={(e) => setEditingPayment({ ...editingPayment, amount: parseInt(e.target.value) || 0 })}
+                      className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      Currency
+                    </label>
+                    <input
+                      type="text"
+                      value={editingPayment.currency}
+                      onChange={(e) => setEditingPayment({ ...editingPayment, currency: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Payment Method
+                  </label>
+                  <select
+                    value={editingPayment.method}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, method: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="JazzCash">JazzCash</option>
+                    <option value="EasyPaisa">EasyPaisa</option>
+                    <option value="Stripe">Stripe</option>
+                    <option value="PayPal">PayPal</option>
+                    <option value="USDT">USDT</option>
+                    <option value="BTC">BTC</option>
+                    <option value="ETH">ETH</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Status
+                  </label>
+                  <select
+                    value={editingPayment.status}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, status: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  >
+                    <option value="Paid">Paid</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Failed">Failed</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Transaction Hash / TXID
+                  </label>
+                  <input
+                    type="text"
+                    value={editingPayment.txHash || ''}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, txHash: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Payment Date
+                  </label>
+                  <input
+                    type="text"
+                    value={editingPayment.paymentDate}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, paymentDate: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3 border-t border-border pt-4">
+                <button
+                  onClick={() => setEditingPayment(null)}
+                  className="px-4 py-2 rounded-lg text-sm text-slate-450 hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSavePaymentEdit}
+                  className="val-btn val-cut-sm px-5 py-2 text-xs font-bold"
+                >
+                  Save Changes
+                </button>
+              </div>
             </div>
           </div>
         )}

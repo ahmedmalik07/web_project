@@ -1,17 +1,24 @@
 "use client"
 
+import { Suspense } from "react"
 import { useState, type FormEvent } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 
-export default function LoginPage() {
+function LoginForm() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get("redirectTo") || "/"
+
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
-  const [submitted, setSubmitted] = useState(false)
+  const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({})
+  const [loading, setLoading] = useState(false)
 
   function validate(): boolean {
-    const newErrors: { email?: string; password?: string } = {}
+    const newErrors: typeof errors = {}
     if (!email.trim()) {
       newErrors.email = "Email is required"
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -24,32 +31,29 @@ export default function LoginPage() {
     return Object.keys(newErrors).length === 0
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!validate()) return
-    setSubmitted(true)
-  }
 
-  if (submitted) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center px-4">
-        <div className="rounded-xl border border-primary/30 bg-primary/5 p-10 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-2xl">
-            <svg width="28" height="28" viewBox="0 0 32 32" fill="none" className="text-primary"><circle cx="16" cy="16" r="14" stroke="currentColor" strokeWidth="2.5" /><path d="M8 10C12 14 12 18 8 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M24 10C20 14 20 18 24 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-          </div>
-          <h2 className="text-2xl font-bold text-foreground">Welcome Back!</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {"Logged in successfully. Chalo, time to dominate the gully!"}
-          </p>
-          <Link
-            href="/leaderboard"
-            className="mt-6 inline-block rounded-lg bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Go to Leaderboard
-          </Link>
-        </div>
-      </div>
-    )
+    setLoading(true)
+    setErrors({})
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+      if (error) {
+        setErrors({ general: error.message })
+        return
+      }
+
+      router.push(redirectTo)
+      router.refresh()
+    } catch {
+      setErrors({ general: "An unexpected error occurred. Please try again." })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -59,9 +63,15 @@ export default function LoginPage() {
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-foreground">Login</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {"Welcome back to Gully XI Premier League"}
+            Welcome back to Gully XI Premier League
           </p>
         </div>
+
+        {errors.general && (
+          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {errors.general}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
           {/* Email */}
@@ -76,7 +86,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value)
-                if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }))
+                if (errors.email) setErrors((p) => ({ ...p, email: undefined }))
               }}
               placeholder="ahmed@example.com"
               className="w-full rounded-lg border border-border bg-input px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -84,7 +94,7 @@ export default function LoginPage() {
             {errors.email && <p className="mt-1 text-xs text-destructive">{errors.email}</p>}
           </div>
 
-          {/* Password with emoji toggle */}
+          {/* Password */}
           <div>
             <label htmlFor="loginPassword" className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Password <span className="text-destructive">*</span>
@@ -97,7 +107,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value)
-                  if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }))
+                  if (errors.password) setErrors((p) => ({ ...p, password: undefined }))
                 }}
                 placeholder="Enter your password"
                 className="w-full rounded-lg border border-border bg-input px-4 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -108,22 +118,26 @@ export default function LoginPage() {
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-muted-foreground hover:text-foreground"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? "\u{1F441}" : "\u{1F441}\u200D\u{1F5E8}"}
+                {showPassword ? "🙈" : "👁"}
               </button>
             </div>
             {errors.password && <p className="mt-1 text-xs text-destructive">{errors.password}</p>}
           </div>
 
-          {/* Submit */}
           <button
             type="submit"
-            className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90"
+            disabled={loading}
+            className="w-full rounded-lg bg-primary px-6 py-3 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Login
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                Signing in...
+              </span>
+            ) : "Login"}
           </button>
         </form>
 
-        {/* Link to sign up */}
         <p className="mt-6 text-center text-sm text-muted-foreground">
           {"Don't have an account? "}
           <Link href="/signup" className="font-medium text-primary hover:underline">
@@ -132,5 +146,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>}>
+      <LoginForm />
+    </Suspense>
   )
 }
